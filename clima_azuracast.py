@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Script de locución automática de clima y noticias para AzuraCast.
-Adaptado para entornos efímeros (GitHub Actions) sin guardar archivos locales.
+Adaptado para entornos efímeros (GitHub Actions) con saludos y noticias variables.
 """
 
 import os
@@ -95,11 +95,35 @@ def hora_en_espanol(hora: int, minuto: int) -> str:
 
 
 def saludo_segun_hora(hora_actual: int) -> str:
+    """
+    Devuelve un saludo al azar dependiendo de la franja horaria.
+    Así evitamos que el bot diga siempre la misma frase.
+    """
     if 6 <= hora_actual < 12:
-        return "Buenos días"
-    if 12 <= hora_actual < 20:
-        return "Buenas tardes"
-    return "Buenas noches"
+        opciones = [
+            "Buenos días",
+            "Muy buenos días",
+            "Hola, buenos días",
+            "Excelente mañana",
+            "Arrancamos la mañana"
+        ]
+    elif 12 <= hora_actual < 20:
+        opciones = [
+            "Buenas tardes",
+            "Muy buenas tardes",
+            "Hola, buenas tardes",
+            "Excelente tarde",
+            "Continuamos la tarde"
+        ]
+    else:
+        opciones = [
+            "Buenas noches",
+            "Muy buenas noches",
+            "Excelente noche",
+            "Hola, buenas noches",
+            "Cerramos el día"
+        ]
+    return random.choice(opciones)
 
 
 # ---------------------------------------------------------------------------
@@ -175,10 +199,6 @@ def armar_texto_clima(data: dict) -> str:
 # ---------------------------------------------------------------------------
 
 def obtener_titular(url_feed: str, cantidad: int = 15) -> str | None:
-    """
-    Usa la hora actual para seleccionar una noticia distinta en cada hora.
-    No requiere guardar archivos (ideal para GitHub Actions).
-    """
     try:
         headers = {
             "User-Agent": "Mozilla/5.0 (compatible; NogaradioClima/1.0)",
@@ -201,12 +221,9 @@ def obtener_titular(url_feed: str, cantidad: int = 15) -> str | None:
         if not entradas_validas:
             return None
 
-        # LÓGICA DE ROTACIÓN SIN MEMORIA (Basado en la hora)
+        # Rotación basada en la hora exacta para no repetir
         ahora = datetime.now(ZONA_HORARIA)
         hora_actual = ahora.hour
-        
-        # El operador % (módulo) asegura que si son las 15:00 y hay 10 noticias, 
-        # elija el índice 5. A las 16:00, elegirá el índice 6. ¡Siempre varía!
         indice_elegido = hora_actual % len(entradas_validas)
 
         return entradas_validas[indice_elegido]
@@ -227,19 +244,19 @@ PLANTILLAS_NOTICIAS = [
         "Es momento de conocer las últimas noticias. "
         "En la actualidad: {titular_mundo}. "
         "Mientras tanto, en el mundo de la música: {titular_musica}. "
-        "Esto fue el resumen de noticias de Nogaradio. Seguimos con más música."
+        "Esto fue el resumen de noticias de Nogaradio. Seguimos con la programación."
     ),
     (
         "Vamos con las noticias del momento. "
         "La actualidad nos cuenta que {titular_mundo}. "
         "Y en música, lo último es: {titular_musica}. "
-        "Seguimos acompañándote con más música en Nogaradio."
+        "Seguimos acompañándote con buena música en tu radio."
     ),
     (
         "Nogaradio te mantiene informado. "
         "Estas son las noticias más recientes: {titular_mundo}. "
         "Y ahora, una novedad del mundo de la música: {titular_musica}. "
-        "Continuamos con más música."
+        "Continuamos disfrutando."
     ),
 ]
 
@@ -322,10 +339,8 @@ def main():
     texto_clima = armar_texto_clima(data)
     print(f"Texto clima: {texto_clima}")
 
-    # 2. NOTICIAS (Con lógica rotativa basada en la hora)
+    # 2. NOTICIAS 
     print("Consultando noticias...")
-    
-    # Buscamos entre las primeras 15 noticias
     titular_mundo = obtener_titular(RSS_MUNDO, cantidad=15)
     titular_musica = obtener_titular(RSS_MUSICA, cantidad=15)
 
