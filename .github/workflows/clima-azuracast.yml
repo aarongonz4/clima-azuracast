@@ -9,8 +9,10 @@ name: Clima AzuraCast
 
 on:
   schedule:
-    # Corre cada 1 hora (en UTC). Argentina es UTC-3.
-    - cron: "0 * * * *"
+    # Corre cada 1 hora, en el minuto 17 (en UTC). El minuto 0 está saturado
+    # a nivel mundial en GitHub Actions, así que usamos un minuto menos pedido
+    # para reducir demoras y ejecuciones salteadas.
+    - cron: "17 * * * *"
   workflow_dispatch: {}  # permite ejecutarlo manualmente desde GitHub para probar
 
 jobs:
