@@ -1,24 +1,7 @@
 #!/usr/bin/env python3
 """
 Script de locución automática de clima y noticias para AzuraCast.
-
-Qué hace:
-1. Consulta el clima actual de Resistencia, Chaco usando Open-Meteo.
-2. Usa la hora oficial de Argentina.
-3. Arma una locución natural en español.
-4. Genera un MP3 con gTTS.
-5. Lee 1 titular de actualidad y 1 titular de música desde RSS.
-6. Sube siempre el mismo archivo "clima.mp3" por SFTP a AzuraCast.
-
-Requiere:
-    pip install requests gTTS paramiko feedparser
-
-Variables de entorno:
-    SFTP_HOST
-    SFTP_PORT
-    SFTP_USER
-    SFTP_PASS
-    SFTP_REMOTE_DIR
+Adaptado para entornos efímeros (GitHub Actions) sin guardar archivos locales.
 """
 
 import os
@@ -81,88 +64,32 @@ CODIGOS_CLIMA = {
 # ---------------------------------------------------------------------------
 
 NUMEROS = {
-    0: "cero",
-    1: "una",
-    2: "dos",
-    3: "tres",
-    4: "cuatro",
-    5: "cinco",
-    6: "seis",
-    7: "siete",
-    8: "ocho",
-    9: "nueve",
-    10: "diez",
-    11: "once",
-    12: "doce",
-    13: "trece",
-    14: "catorce",
-    15: "quince",
-    16: "dieciséis",
-    17: "diecisiete",
-    18: "dieciocho",
-    19: "diecinueve",
-    20: "veinte",
-    21: "veintiuno",
-    22: "veintidós",
-    23: "veintitrés",
-    24: "veinticuatro",
-    25: "veinticinco",
-    26: "veintiséis",
-    27: "veintisiete",
-    28: "veintiocho",
-    29: "veintinueve",
-    30: "treinta",
-    31: "treinta y uno",
-    32: "treinta y dos",
-    33: "treinta y tres",
-    34: "treinta y cuatro",
-    35: "treinta y cinco",
-    36: "treinta y seis",
-    37: "treinta y siete",
-    38: "treinta y ocho",
-    39: "treinta y nueve",
-    40: "cuarenta",
-    41: "cuarenta y uno",
-    42: "cuarenta y dos",
-    43: "cuarenta y tres",
-    44: "cuarenta y cuatro",
-    45: "cuarenta y cinco",
-    46: "cuarenta y seis",
-    47: "cuarenta y siete",
-    48: "cuarenta y ocho",
-    49: "cuarenta y nueve",
-    50: "cincuenta",
-    51: "cincuenta y uno",
-    52: "cincuenta y dos",
-    53: "cincuenta y tres",
-    54: "cincuenta y cuatro",
-    55: "cincuenta y cinco",
-    56: "cincuenta y seis",
-    57: "cincuenta y siete",
-    58: "cincuenta y ocho",
+    0: "cero", 1: "una", 2: "dos", 3: "tres", 4: "cuatro", 5: "cinco",
+    6: "seis", 7: "siete", 8: "ocho", 9: "nueve", 10: "diez",
+    11: "once", 12: "doce", 13: "trece", 14: "catorce", 15: "quince",
+    16: "dieciséis", 17: "diecisiete", 18: "dieciocho", 19: "diecinueve",
+    20: "veinte", 21: "veintiuno", 22: "veintidós", 23: "veintitrés",
+    24: "veinticuatro", 25: "veinticinco", 26: "veintiséis", 27: "veintisiete",
+    28: "veintiocho", 29: "veintinueve", 30: "treinta", 31: "treinta y uno",
+    32: "treinta y dos", 33: "treinta y tres", 34: "treinta y cuatro",
+    35: "treinta y cinco", 36: "treinta y seis", 37: "treinta y siete",
+    38: "treinta y ocho", 39: "treinta y nueve", 40: "cuarenta",
+    41: "cuarenta y uno", 42: "cuarenta y dos", 43: "cuarenta y tres",
+    44: "cuarenta y cuatro", 45: "cuarenta y cinco", 46: "cuarenta y seis",
+    47: "cuarenta y siete", 48: "cuarenta y ocho", 49: "cuarenta y nueve",
+    50: "cincuenta", 51: "cincuenta y uno", 52: "cincuenta y dos",
+    53: "cincuenta y tres", 54: "cincuenta y cuatro", 55: "cincuenta y cinco",
+    56: "cincuenta y seis", 57: "cincuenta y siete", 58: "cincuenta y ocho",
     59: "cincuenta y nueve",
 }
 
-
 def hora_en_espanol(hora: int, minuto: int) -> str:
-    """
-    Convierte la hora 24h a una frase natural para locución radial.
-
-    Ejemplos:
-        00:22 -> "doce con veintidós minutos"
-        13:05 -> "una con cinco minutos"
-        18:30 -> "seis con treinta minutos"
-        20:00 -> "ocho en punto"
-    """
     hora_12 = hora % 12
     if hora_12 == 0:
         hora_12 = 12
-
     texto_hora = NUMEROS[hora_12]
-
     if minuto == 0:
         return f"{texto_hora} en punto"
-
     texto_minuto = NUMEROS[minuto]
     return f"{texto_hora} con {texto_minuto} minutos"
 
@@ -190,15 +117,10 @@ def obtener_clima() -> dict:
         ),
         "timezone": "America/Argentina/Buenos_Aires",
     }
-
     resp = requests.get(url, params=params, timeout=15)
     resp.raise_for_status()
     return resp.json()
 
-
-# ---------------------------------------------------------------------------
-# Plantillas de locución del clima
-# ---------------------------------------------------------------------------
 
 PLANTILLAS_CLIMA = [
     (
@@ -231,45 +153,31 @@ PLANTILLAS_CLIMA = [
 
 def armar_texto_clima(data: dict) -> str:
     actual = data["current"]
-
     temp = round(actual["temperature_2m"])
     sensacion = round(actual["apparent_temperature"])
     humedad = round(actual["relative_humidity_2m"])
     viento = round(actual["wind_speed_10m"])
-    descripcion = CODIGOS_CLIMA.get(
-        actual["weather_code"],
-        "condiciones variables"
-    )
+    descripcion = CODIGOS_CLIMA.get(actual["weather_code"], "condiciones variables")
 
-    # IMPORTANTE: usamos siempre la hora de Argentina, no la del servidor de GitHub.
     ahora = datetime.now(ZONA_HORARIA)
     hora_str = hora_en_espanol(ahora.hour, ahora.minute)
     saludo = saludo_segun_hora(ahora.hour)
 
     plantilla = random.choice(PLANTILLAS_CLIMA)
-
     return plantilla.format(
-        saludo=saludo,
-        hora=hora_str,
-        descripcion=descripcion,
-        temp=temp,
-        sensacion=sensacion,
-        humedad=humedad,
-        viento=viento,
+        saludo=saludo, hora=hora_str, descripcion=descripcion,
+        temp=temp, sensacion=sensacion, humedad=humedad, viento=viento,
     )
 
 
 # ---------------------------------------------------------------------------
-# 1b. Obtener titulares RSS
+# 1b. Obtener titulares RSS (LÓGICA ROTATIVA POR HORA)
 # ---------------------------------------------------------------------------
 
-def obtener_titular(url_feed: str, cantidad: int = 5) -> str | None:
+def obtener_titular(url_feed: str, cantidad: int = 15) -> str | None:
     """
-    Devuelve un titular elegido entre las primeras noticias del RSS.
-
-    Antes se usaba siempre feed.entries[0], por lo que si la web no publicaba
-    una noticia nueva se repetía el mismo titular durante varias horas.
-    Ahora toma hasta las primeras 5 entradas y elige una al azar.
+    Usa la hora actual para seleccionar una noticia distinta en cada hora.
+    No requiere guardar archivos (ideal para GitHub Actions).
     """
     try:
         headers = {
@@ -278,17 +186,11 @@ def obtener_titular(url_feed: str, cantidad: int = 5) -> str | None:
             "Pragma": "no-cache",
         }
 
-        resp = requests.get(
-            url_feed,
-            headers=headers,
-            timeout=15,
-        )
+        resp = requests.get(url_feed, headers=headers, timeout=15)
         resp.raise_for_status()
-
         feed = feedparser.parse(resp.content)
 
         entradas_validas = []
-
         for entry in feed.entries[:cantidad]:
             titulo = getattr(entry, "title", "")
             if titulo:
@@ -296,16 +198,22 @@ def obtener_titular(url_feed: str, cantidad: int = 5) -> str | None:
                 if titulo:
                     entradas_validas.append(titulo)
 
-        if entradas_validas:
-            return random.choice(entradas_validas)
+        if not entradas_validas:
+            return None
+
+        # LÓGICA DE ROTACIÓN SIN MEMORIA (Basado en la hora)
+        ahora = datetime.now(ZONA_HORARIA)
+        hora_actual = ahora.hour
+        
+        # El operador % (módulo) asegura que si son las 15:00 y hay 10 noticias, 
+        # elija el índice 5. A las 16:00, elegirá el índice 6. ¡Siempre varía!
+        indice_elegido = hora_actual % len(entradas_validas)
+
+        return entradas_validas[indice_elegido]
 
     except Exception as e:
-        print(
-            f"No se pudo leer el feed {url_feed}: {e}",
-            file=sys.stderr
-        )
-
-    return None
+        print(f"No se pudo leer el feed {url_feed}: {e}", file=sys.stderr)
+        return None
 
 
 PLANTILLAS_NOTICIAS = [
@@ -336,35 +244,23 @@ PLANTILLAS_NOTICIAS = [
 ]
 
 
-def armar_texto_noticias(
-    titular_mundo: str | None,
-    titular_musica: str | None
-) -> str:
+def armar_texto_noticias(titular_mundo: str | None, titular_musica: str | None) -> str:
     partes = []
-
     if titular_mundo and titular_musica:
         plantilla = random.choice(PLANTILLAS_NOTICIAS)
-        partes.append(
-            plantilla.format(
-                titular_mundo=titular_mundo,
-                titular_musica=titular_musica,
-            )
-        )
-
+        partes.append(plantilla.format(titular_mundo=titular_mundo, titular_musica=titular_musica))
     elif titular_mundo:
         partes.append(
             f"Y ahora, te contamos las noticias más importantes del momento. "
             f"En la actualidad: {titular_mundo}. "
             f"Seguimos con más música en Nogaradio."
         )
-
     elif titular_musica:
         partes.append(
             f"Y ahora, una novedad del mundo de la música: "
             f"{titular_musica}. "
             f"Seguimos con más música en Nogaradio."
         )
-
     return " ".join(partes)
 
 
@@ -374,13 +270,7 @@ def armar_texto_noticias(
 
 def generar_audio(texto: str, path_salida: str) -> None:
     print(f"Texto final: {texto}")
-
-    tts = gTTS(
-        text=texto,
-        lang="es",
-        tld="com.ar",
-    )
-
+    tts = gTTS(text=texto, lang="es", tld="com.ar")
     tts.save(path_salida)
 
 
@@ -388,39 +278,17 @@ def generar_audio(texto: str, path_salida: str) -> None:
 # 3. Subir por SFTP
 # ---------------------------------------------------------------------------
 
-def subir_sftp(
-    local_path: str,
-    host: str,
-    port: int,
-    user: str,
-    password: str,
-    remote_dir: str,
-) -> None:
-
+def subir_sftp(local_path: str, host: str, port: int, user: str, password: str, remote_dir: str) -> None:
     transport = paramiko.Transport((host, port))
-
     try:
-        transport.connect(
-            username=user,
-            password=password,
-        )
-
+        transport.connect(username=user, password=password)
         sftp = paramiko.SFTPClient.from_transport(transport)
-
         try:
-            remote_path = (
-                f"{remote_dir.rstrip('/')}/{REMOTE_FILENAME}"
-            )
-
+            remote_path = f"{remote_dir.rstrip('/')}/{REMOTE_FILENAME}"
             sftp.put(local_path, remote_path)
-
-            print(
-                f"Subido correctamente a {remote_path}"
-            )
-
+            print(f"Subido correctamente a {remote_path}")
         finally:
             sftp.close()
-
     finally:
         transport.close()
 
@@ -434,93 +302,50 @@ def main():
     sftp_port = int(os.environ.get("SFTP_PORT", "2022"))
     sftp_user = os.environ.get("SFTP_USER")
     sftp_pass = os.environ.get("SFTP_PASS")
-    sftp_dir = os.environ.get(
-        "SFTP_REMOTE_DIR",
-        "/clima"
-    )
+    sftp_dir = os.environ.get("SFTP_REMOTE_DIR", "/clima")
 
     faltantes = [
-        nombre
-        for nombre, valor in [
+        nombre for nombre, valor in [
             ("SFTP_HOST", sftp_host),
             ("SFTP_USER", sftp_user),
             ("SFTP_PASS", sftp_pass),
-        ]
-        if not valor
+        ] if not valor
     ]
 
     if faltantes:
-        print(
-            f"Faltan variables de entorno: "
-            f"{', '.join(faltantes)}",
-            file=sys.stderr,
-        )
+        print(f"Faltan variables de entorno: {', '.join(faltantes)}", file=sys.stderr)
         sys.exit(1)
 
-    # ---------------------------------------------------------------
-    # Clima
-    # ---------------------------------------------------------------
-
+    # 1. CLIMA
     print("Consultando clima...")
     data = obtener_clima()
-
     texto_clima = armar_texto_clima(data)
     print(f"Texto clima: {texto_clima}")
 
-    # ---------------------------------------------------------------
-    # Noticias
-    # ---------------------------------------------------------------
-
+    # 2. NOTICIAS (Con lógica rotativa basada en la hora)
     print("Consultando noticias...")
+    
+    # Buscamos entre las primeras 15 noticias
+    titular_mundo = obtener_titular(RSS_MUNDO, cantidad=15)
+    titular_musica = obtener_titular(RSS_MUSICA, cantidad=15)
 
-    titular_mundo = obtener_titular(RSS_MUNDO, cantidad=5)
-    titular_musica = obtener_titular(RSS_MUSICA, cantidad=5)
-
-    texto_noticias = armar_texto_noticias(
-        titular_mundo,
-        titular_musica,
-    )
-
+    texto_noticias = armar_texto_noticias(titular_mundo, titular_musica)
     print(f"Texto noticias: {texto_noticias}")
 
-    # ---------------------------------------------------------------
-    # Texto final
-    # ---------------------------------------------------------------
-
+    # 3. TEXTO FINAL
     textos = [texto_clima]
-
     if texto_noticias:
         textos.append(texto_noticias)
-
     texto_final = " ".join(textos).strip()
 
-    # ---------------------------------------------------------------
-    # TTS
-    # ---------------------------------------------------------------
-
+    # 4. TTS
     print("Generando audio...")
-    generar_audio(
-        texto_final,
-        LOCAL_MP3,
-    )
+    generar_audio(texto_final, LOCAL_MP3)
 
-    # ---------------------------------------------------------------
-    # SFTP
-    # ---------------------------------------------------------------
-
+    # 5. SFTP
     print("Subiendo por SFTP...")
-
-    subir_sftp(
-        LOCAL_MP3,
-        sftp_host,
-        sftp_port,
-        sftp_user,
-        sftp_pass,
-        sftp_dir,
-    )
-
+    subir_sftp(LOCAL_MP3, sftp_host, sftp_port, sftp_user, sftp_pass, sftp_dir)
     print("Listo.")
-
 
 if __name__ == "__main__":
     main()
