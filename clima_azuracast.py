@@ -1,37 +1,31 @@
 #!/usr/bin/env python3
 """
-Script de locución automática de clima para AzuraCast.
+Script de locución automática de clima y noticias para AzuraCast.
 
 Qué hace:
-1. Consulta el clima actual de Resistencia, Chaco (OpenWeatherMap).
-2. Arma un texto natural en español con la info.
-3. Genera un archivo MP3 con gTTS (voz de Google, gratis).
-4. Sube el MP3 por SFTP a la carpeta de medios de AzuraCast,
-   siempre pisando el mismo nombre de archivo (clima.mp3),
-   para que la playlist "Clima" (modo Jingle) siempre reproduzca
-   la última versión.
-
-Usa Open-Meteo (open-meteo.com) para el clima: es gratis, no pide API key
-y funciona al instante, sin esperas de activación.
-
-También lee 1 titular de actualidad (Diario Red) y 1 titular de música
-(Planeta.pe) desde sus feeds RSS, y los suma al mismo audio.
+1. Consulta el clima actual de Resistencia, Chaco usando Open-Meteo.
+2. Usa la hora oficial de Argentina.
+3. Arma una locución natural en español.
+4. Genera un MP3 con gTTS.
+5. Lee 1 titular de actualidad y 1 titular de música desde RSS.
+6. Sube siempre el mismo archivo "clima.mp3" por SFTP a AzuraCast.
 
 Requiere:
     pip install requests gTTS paramiko feedparser
 
-Variables de entorno necesarias (configurar como Secrets en GitHub Actions):
-    SFTP_HOST       -> host que te dio AzuraCast en "SFTP Users"
-    SFTP_PORT       -> puerto SFTP (normalmente 2022)
-    SFTP_USER       -> usuario SFTP
-    SFTP_PASS       -> contraseña SFTP
-    SFTP_REMOTE_DIR -> carpeta remota donde va el archivo, ej: "/clima"
+Variables de entorno:
+    SFTP_HOST
+    SFTP_PORT
+    SFTP_USER
+    SFTP_PASS
+    SFTP_REMOTE_DIR
 """
 
 import os
 import random
 import sys
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import feedparser
 import requests
@@ -42,21 +36,22 @@ import paramiko
 # Configuración
 # ---------------------------------------------------------------------------
 
-CIUDAD = "Resistencia,AR"
+CIUDAD = "Resistencia, Argentina"
 LAT = -27.4514
 LON = -58.9867
 
+ZONA_HORARIA = ZoneInfo("America/Argentina/Buenos_Aires")
+
 LOCAL_MP3 = "clima.mp3"
-REMOTE_FILENAME = "clima.mp3"  # nombre fijo: siempre pisa el mismo archivo
+REMOTE_FILENAME = "clima.mp3"
 
 RSS_MUNDO = "https://www.diario-red.com/rss/"
 RSS_MUSICA = "https://www.planeta.pe/noticias/musica/feed.xml"
 
 # ---------------------------------------------------------------------------
-# 1. Obtener el clima (Open-Meteo, sin API key)
+# Códigos de clima WMO -> descripción en español
 # ---------------------------------------------------------------------------
 
-# Códigos WMO de clima -> descripción en español
 CODIGOS_CLIMA = {
     0: "cielo despejado",
     1: "mayormente despejado",
@@ -81,18 +76,95 @@ CODIGOS_CLIMA = {
     99: "tormenta fuerte con granizo",
 }
 
+# ---------------------------------------------------------------------------
+# Números en español para que gTTS pronuncie bien la hora
+# ---------------------------------------------------------------------------
 
-def obtener_clima() -> dict:
-    url = "https://api.open-meteo.com/v1/forecast"
-    params = {
-        "latitude": LAT,
-        "longitude": LON,
-        "current": "temperature_2m,relative_humidity_2m,apparent_temperature,wind_speed_10m,weather_code",
-        "timezone": "America/Argentina/Buenos_Aires",
-    }
-    resp = requests.get(url, params=params, timeout=15)
-    resp.raise_for_status()
-    return resp.json()
+NUMEROS = {
+    0: "cero",
+    1: "una",
+    2: "dos",
+    3: "tres",
+    4: "cuatro",
+    5: "cinco",
+    6: "seis",
+    7: "siete",
+    8: "ocho",
+    9: "nueve",
+    10: "diez",
+    11: "once",
+    12: "doce",
+    13: "trece",
+    14: "catorce",
+    15: "quince",
+    16: "dieciséis",
+    17: "diecisiete",
+    18: "dieciocho",
+    19: "diecinueve",
+    20: "veinte",
+    21: "veintiuno",
+    22: "veintidós",
+    23: "veintitrés",
+    24: "veinticuatro",
+    25: "veinticinco",
+    26: "veintiséis",
+    27: "veintisiete",
+    28: "veintiocho",
+    29: "veintinueve",
+    30: "treinta",
+    31: "treinta y uno",
+    32: "treinta y dos",
+    33: "treinta y tres",
+    34: "treinta y cuatro",
+    35: "treinta y cinco",
+    36: "treinta y seis",
+    37: "treinta y siete",
+    38: "treinta y ocho",
+    39: "treinta y nueve",
+    40: "cuarenta",
+    41: "cuarenta y uno",
+    42: "cuarenta y dos",
+    43: "cuarenta y tres",
+    44: "cuarenta y cuatro",
+    45: "cuarenta y cinco",
+    46: "cuarenta y seis",
+    47: "cuarenta y siete",
+    48: "cuarenta y ocho",
+    49: "cuarenta y nueve",
+    50: "cincuenta",
+    51: "cincuenta y uno",
+    52: "cincuenta y dos",
+    53: "cincuenta y tres",
+    54: "cincuenta y cuatro",
+    55: "cincuenta y cinco",
+    56: "cincuenta y seis",
+    57: "cincuenta y siete",
+    58: "cincuenta y ocho",
+    59: "cincuenta y nueve",
+}
+
+
+def hora_en_espanol(hora: int, minuto: int) -> str:
+    """
+    Convierte la hora 24h a una frase natural para locución radial.
+
+    Ejemplos:
+        00:22 -> "doce con veintidós minutos"
+        13:05 -> "una con cinco minutos"
+        18:30 -> "seis con treinta minutos"
+        20:00 -> "ocho en punto"
+    """
+    hora_12 = hora % 12
+    if hora_12 == 0:
+        hora_12 = 12
+
+    texto_hora = NUMEROS[hora_12]
+
+    if minuto == 0:
+        return f"{texto_hora} en punto"
+
+    texto_minuto = NUMEROS[minuto]
+    return f"{texto_hora} con {texto_minuto} minutos"
 
 
 def saludo_segun_hora(hora_actual: int) -> str:
@@ -103,49 +175,80 @@ def saludo_segun_hora(hora_actual: int) -> str:
     return "Buenas noches"
 
 
-# Varias plantillas distintas, con la marca "Nogaradio", para que la
-# locución no suene siempre igual.
-# {saludo}, {hora}, {descripcion}, {temp}, {sensacion}, {humedad}, {viento}
-PLANTILLAS = [
+# ---------------------------------------------------------------------------
+# 1. Obtener clima
+# ---------------------------------------------------------------------------
+
+def obtener_clima() -> dict:
+    url = "https://api.open-meteo.com/v1/forecast"
+    params = {
+        "latitude": LAT,
+        "longitude": LON,
+        "current": (
+            "temperature_2m,relative_humidity_2m,"
+            "apparent_temperature,wind_speed_10m,weather_code"
+        ),
+        "timezone": "America/Argentina/Buenos_Aires",
+    }
+
+    resp = requests.get(url, params=params, timeout=15)
+    resp.raise_for_status()
+    return resp.json()
+
+
+# ---------------------------------------------------------------------------
+# Plantillas de locución del clima
+# ---------------------------------------------------------------------------
+
+PLANTILLAS_CLIMA = [
     (
-        "Nogaradio te dice la hora y la temperatura. {saludo}, son las {hora} horas. "
-        "Así está el clima en Resistencia: {descripcion}, con {temp} grados "
-        "y sensación térmica de {sensacion} grados. Humedad del {humedad} por ciento "
-        "y vientos de {viento} kilómetros por hora."
+        "{saludo}. En Argentina son las {hora} horas. "
+        "Nogaradio te cuenta cómo está el tiempo en Resistencia: "
+        "{descripcion}, con {temp} grados y sensación térmica de {sensacion} grados. "
+        "Humedad del {humedad} por ciento y vientos de {viento} kilómetros por hora."
     ),
     (
-        "{saludo}. Nogaradio te informa: son las {hora} horas en Resistencia, "
-        "con {descripcion} y una temperatura de {temp} grados, que se siente como {sensacion}. "
-        "Humedad del {humedad} por ciento, viento de {viento} kilómetros por hora."
+        "{saludo}. En Argentina son las {hora} horas. "
+        "Este es el informe del tiempo de Nogaradio. "
+        "En Resistencia tenemos {descripcion}, {temp} grados de temperatura "
+        "y una sensación térmica de {sensacion} grados. "
+        "La humedad es del {humedad} por ciento, con viento de {viento} kilómetros por hora."
     ),
     (
-        "La hora y el clima, con Nogaradio. {hora} horas, {saludo}. "
-        "El tiempo hoy en Resistencia: {descripcion}, temperatura de {temp} grados, "
-        "sensación térmica de {sensacion} grados. Humedad del {humedad} por ciento, "
-        "viento de {viento} kilómetros por hora."
+        "Nogaradio te informa. En Argentina son las {hora} horas. "
+        "Así está el clima en Resistencia: {descripcion}, "
+        "{temp} grados de temperatura y {sensacion} grados de sensación térmica. "
+        "Humedad del {humedad} por ciento y viento de {viento} kilómetros por hora."
     ),
     (
-        "{saludo}, esto es Nogaradio. Reporte del tiempo en Resistencia, {hora} horas: "
-        "{descripcion}, {temp} grados de temperatura y {sensacion} grados de sensación térmica. "
-        "Humedad {humedad} por ciento, con viento de {viento} kilómetros por hora."
+        "{saludo}. La hora en Argentina: {hora} horas. "
+        "Y el clima en Resistencia indica {descripcion}, "
+        "con {temp} grados y sensación térmica de {sensacion} grados. "
+        "Humedad del {humedad} por ciento y vientos de {viento} kilómetros por hora."
     ),
 ]
 
 
-def armar_texto(data: dict) -> str:
+def armar_texto_clima(data: dict) -> str:
     actual = data["current"]
+
     temp = round(actual["temperature_2m"])
     sensacion = round(actual["apparent_temperature"])
     humedad = round(actual["relative_humidity_2m"])
     viento = round(actual["wind_speed_10m"])
-    descripcion = CODIGOS_CLIMA.get(actual["weather_code"], "condiciones variables")
+    descripcion = CODIGOS_CLIMA.get(
+        actual["weather_code"],
+        "condiciones variables"
+    )
 
-    ahora = datetime.now()
-    hora_str = ahora.strftime("%H:%M")
+    # IMPORTANTE: usamos siempre la hora de Argentina, no la del servidor de GitHub.
+    ahora = datetime.now(ZONA_HORARIA)
+    hora_str = hora_en_espanol(ahora.hour, ahora.minute)
     saludo = saludo_segun_hora(ahora.hour)
 
-    plantilla = random.choice(PLANTILLAS)
-    texto = plantilla.format(
+    plantilla = random.choice(PLANTILLAS_CLIMA)
+
+    return plantilla.format(
         saludo=saludo,
         hora=hora_str,
         descripcion=descripcion,
@@ -154,50 +257,104 @@ def armar_texto(data: dict) -> str:
         humedad=humedad,
         viento=viento,
     )
-    return texto
 
 
 # ---------------------------------------------------------------------------
-# 1b. Obtener titulares de RSS
+# 1b. Obtener titulares RSS
 # ---------------------------------------------------------------------------
 
 def obtener_titular(url_feed: str) -> str | None:
-    """Devuelve el título de la primera noticia del feed, o None si falla."""
+    """Devuelve el primer titular del feed, o None si falla."""
     try:
         feed = feedparser.parse(url_feed)
+
         if feed.entries:
-            return feed.entries[0].title.strip()
+            titulo = getattr(feed.entries[0], "title", "")
+            if titulo:
+                return titulo.strip()
+
     except Exception as e:
-        print(f"No se pudo leer el feed {url_feed}: {e}", file=sys.stderr)
+        print(
+            f"No se pudo leer el feed {url_feed}: {e}",
+            file=sys.stderr
+        )
+
     return None
 
 
 PLANTILLAS_NOTICIAS = [
-    "En la actualidad: {titular_mundo}. Y en el mundo de la música: {titular_musica}.",
-    "Esto es lo último: {titular_mundo}. Además, en música: {titular_musica}.",
-    "Te contamos: {titular_mundo}. Y del lado musical: {titular_musica}.",
-    "Las noticias del momento: {titular_mundo}. En música, se habla de: {titular_musica}.",
+    (
+        "Y ahora, te contamos las noticias más importantes del momento. "
+        "En la actualidad: {titular_mundo}. "
+        "Y en música: {titular_musica}. "
+        "Ya estás informado. Seguimos con más música en Nogaradio."
+    ),
+    (
+        "Es momento de conocer las últimas noticias. "
+        "En la actualidad: {titular_mundo}. "
+        "Mientras tanto, en el mundo de la música: {titular_musica}. "
+        "Esto fue el resumen de noticias de Nogaradio. Seguimos con más música."
+    ),
+    (
+        "Vamos con las noticias del momento. "
+        "La actualidad nos cuenta que {titular_mundo}. "
+        "Y en música, lo último es: {titular_musica}. "
+        "Seguimos acompañándote con más música en Nogaradio."
+    ),
+    (
+        "Nogaradio te mantiene informado. "
+        "Estas son las noticias más recientes: {titular_mundo}. "
+        "Y ahora, una novedad del mundo de la música: {titular_musica}. "
+        "Continuamos con más música."
+    ),
 ]
 
 
-def armar_texto_noticias(titular_mundo: str | None, titular_musica: str | None) -> str:
+def armar_texto_noticias(
+    titular_mundo: str | None,
+    titular_musica: str | None
+) -> str:
     partes = []
+
     if titular_mundo and titular_musica:
         plantilla = random.choice(PLANTILLAS_NOTICIAS)
-        partes.append(plantilla.format(titular_mundo=titular_mundo, titular_musica=titular_musica))
+        partes.append(
+            plantilla.format(
+                titular_mundo=titular_mundo,
+                titular_musica=titular_musica,
+            )
+        )
+
     elif titular_mundo:
-        partes.append(f"En la actualidad: {titular_mundo}.")
+        partes.append(
+            f"Y ahora, te contamos las noticias más importantes del momento. "
+            f"En la actualidad: {titular_mundo}. "
+            f"Seguimos con más música en Nogaradio."
+        )
+
     elif titular_musica:
-        partes.append(f"En el mundo de la música: {titular_musica}.")
+        partes.append(
+            f"Y ahora, una novedad del mundo de la música: "
+            f"{titular_musica}. "
+            f"Seguimos con más música en Nogaradio."
+        )
+
     return " ".join(partes)
 
 
 # ---------------------------------------------------------------------------
-# 2. Generar el audio TTS
+# 2. Generar audio TTS
 # ---------------------------------------------------------------------------
 
 def generar_audio(texto: str, path_salida: str) -> None:
-    tts = gTTS(text=texto, lang="es", tld="com.ar")
+    print(f"Texto final: {texto}")
+
+    tts = gTTS(
+        text=texto,
+        lang="es",
+        tld="com.ar",
+    )
+
     tts.save(path_salida)
 
 
@@ -205,17 +362,39 @@ def generar_audio(texto: str, path_salida: str) -> None:
 # 3. Subir por SFTP
 # ---------------------------------------------------------------------------
 
-def subir_sftp(local_path: str, host: str, port: int, user: str, password: str, remote_dir: str) -> None:
+def subir_sftp(
+    local_path: str,
+    host: str,
+    port: int,
+    user: str,
+    password: str,
+    remote_dir: str,
+) -> None:
+
     transport = paramiko.Transport((host, port))
+
     try:
-        transport.connect(username=user, password=password)
+        transport.connect(
+            username=user,
+            password=password,
+        )
+
         sftp = paramiko.SFTPClient.from_transport(transport)
+
         try:
-            remote_path = f"{remote_dir.rstrip('/')}/{REMOTE_FILENAME}"
+            remote_path = (
+                f"{remote_dir.rstrip('/')}/{REMOTE_FILENAME}"
+            )
+
             sftp.put(local_path, remote_path)
-            print(f"Subido correctamente a {remote_path}")
+
+            print(
+                f"Subido correctamente a {remote_path}"
+            )
+
         finally:
             sftp.close()
+
     finally:
         transport.close()
 
@@ -229,7 +408,10 @@ def main():
     sftp_port = int(os.environ.get("SFTP_PORT", "2022"))
     sftp_user = os.environ.get("SFTP_USER")
     sftp_pass = os.environ.get("SFTP_PASS")
-    sftp_dir = os.environ.get("SFTP_REMOTE_DIR", "/clima")
+    sftp_dir = os.environ.get(
+        "SFTP_REMOTE_DIR",
+        "/clima"
+    )
 
     faltantes = [
         nombre
@@ -240,28 +422,76 @@ def main():
         ]
         if not valor
     ]
+
     if faltantes:
-        print(f"Faltan variables de entorno: {', '.join(faltantes)}", file=sys.stderr)
+        print(
+            f"Faltan variables de entorno: "
+            f"{', '.join(faltantes)}",
+            file=sys.stderr,
+        )
         sys.exit(1)
+
+    # ---------------------------------------------------------------
+    # Clima
+    # ---------------------------------------------------------------
 
     print("Consultando clima...")
     data = obtener_clima()
-    texto_clima = armar_texto(data)
+
+    texto_clima = armar_texto_clima(data)
     print(f"Texto clima: {texto_clima}")
 
+    # ---------------------------------------------------------------
+    # Noticias
+    # ---------------------------------------------------------------
+
     print("Consultando noticias...")
+
     titular_mundo = obtener_titular(RSS_MUNDO)
     titular_musica = obtener_titular(RSS_MUSICA)
-    texto_noticias = armar_texto_noticias(titular_mundo, titular_musica)
+
+    texto_noticias = armar_texto_noticias(
+        titular_mundo,
+        titular_musica,
+    )
+
     print(f"Texto noticias: {texto_noticias}")
 
-    texto_final = f"{texto_clima} {texto_noticias}".strip()
+    # ---------------------------------------------------------------
+    # Texto final
+    # ---------------------------------------------------------------
+
+    textos = [texto_clima]
+
+    if texto_noticias:
+        textos.append(texto_noticias)
+
+    texto_final = " ".join(textos).strip()
+
+    # ---------------------------------------------------------------
+    # TTS
+    # ---------------------------------------------------------------
 
     print("Generando audio...")
-    generar_audio(texto_final, LOCAL_MP3)
+    generar_audio(
+        texto_final,
+        LOCAL_MP3,
+    )
+
+    # ---------------------------------------------------------------
+    # SFTP
+    # ---------------------------------------------------------------
 
     print("Subiendo por SFTP...")
-    subir_sftp(LOCAL_MP3, sftp_host, sftp_port, sftp_user, sftp_pass, sftp_dir)
+
+    subir_sftp(
+        LOCAL_MP3,
+        sftp_host,
+        sftp_port,
+        sftp_user,
+        sftp_pass,
+        sftp_dir,
+    )
 
     print("Listo.")
 
