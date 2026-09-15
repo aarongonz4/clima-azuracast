@@ -263,15 +263,41 @@ def armar_texto_clima(data: dict) -> str:
 # 1b. Obtener titulares RSS
 # ---------------------------------------------------------------------------
 
-def obtener_titular(url_feed: str) -> str | None:
-    """Devuelve el primer titular del feed, o None si falla."""
-    try:
-        feed = feedparser.parse(url_feed)
+def obtener_titular(url_feed: str, cantidad: int = 5) -> str | None:
+    """
+    Devuelve un titular elegido entre las primeras noticias del RSS.
 
-        if feed.entries:
-            titulo = getattr(feed.entries[0], "title", "")
+    Antes se usaba siempre feed.entries[0], por lo que si la web no publicaba
+    una noticia nueva se repetía el mismo titular durante varias horas.
+    Ahora toma hasta las primeras 5 entradas y elige una al azar.
+    """
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (compatible; NogaradioClima/1.0)",
+            "Cache-Control": "no-cache",
+            "Pragma": "no-cache",
+        }
+
+        resp = requests.get(
+            url_feed,
+            headers=headers,
+            timeout=15,
+        )
+        resp.raise_for_status()
+
+        feed = feedparser.parse(resp.content)
+
+        entradas_validas = []
+
+        for entry in feed.entries[:cantidad]:
+            titulo = getattr(entry, "title", "")
             if titulo:
-                return titulo.strip()
+                titulo = " ".join(titulo.strip().split())
+                if titulo:
+                    entradas_validas.append(titulo)
+
+        if entradas_validas:
+            return random.choice(entradas_validas)
 
     except Exception as e:
         print(
@@ -447,8 +473,8 @@ def main():
 
     print("Consultando noticias...")
 
-    titular_mundo = obtener_titular(RSS_MUNDO)
-    titular_musica = obtener_titular(RSS_MUSICA)
+    titular_mundo = obtener_titular(RSS_MUNDO, cantidad=5)
+    titular_musica = obtener_titular(RSS_MUSICA, cantidad=5)
 
     texto_noticias = armar_texto_noticias(
         titular_mundo,
