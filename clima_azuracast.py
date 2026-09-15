@@ -1,0 +1,176 @@
+#!/usr/bin/env python3
+"""
+Script de locución automática de clima para AzuraCast.
+
+Qué hace:
+1. Consulta el clima actual de Resistencia, Chaco (OpenWeatherMap).
+2. Arma un texto natural en español con la info.
+3. Genera un archivo MP3 con gTTS (voz de Google, gratis).
+4. Sube el MP3 por SFTP a la carpeta de medios de AzuraCast,
+   siempre pisando el mismo nombre de archivo (clima.mp3),
+   para que la playlist "Clima" (modo Jingle) siempre reproduzca
+   la última versión.
+
+Usa Open-Meteo (open-meteo.com) para el clima: es gratis, no pide API key
+y funciona al instante, sin esperas de activación.
+
+Requiere:
+    pip install requests gTTS paramiko
+
+Variables de entorno necesarias (configurar como Secrets en GitHub Actions):
+    SFTP_HOST       -> host que te dio AzuraCast en "SFTP Users"
+    SFTP_PORT       -> puerto SFTP (normalmente 2022)
+    SFTP_USER       -> usuario SFTP
+    SFTP_PASS       -> contraseña SFTP
+    SFTP_REMOTE_DIR -> carpeta remota donde va el archivo, ej: "/clima"
+"""
+
+import os
+import sys
+from datetime import datetime
+
+import requests
+from gtts import gTTS
+import paramiko
+
+# ---------------------------------------------------------------------------
+# Configuración
+# ---------------------------------------------------------------------------
+
+CIUDAD = "Resistencia,AR"
+LAT = -27.4514
+LON = -58.9867
+
+LOCAL_MP3 = "clima.mp3"
+REMOTE_FILENAME = "clima.mp3"  # nombre fijo: siempre pisa el mismo archivo
+
+# ---------------------------------------------------------------------------
+# 1. Obtener el clima (Open-Meteo, sin API key)
+# ---------------------------------------------------------------------------
+
+# Códigos WMO de clima -> descripción en español
+CODIGOS_CLIMA = {
+    0: "cielo despejado",
+    1: "mayormente despejado",
+    2: "parcialmente nublado",
+    3: "nublado",
+    45: "neblina",
+    48: "neblina con escarcha",
+    51: "llovizna débil",
+    53: "llovizna moderada",
+    55: "llovizna intensa",
+    61: "lluvia débil",
+    63: "lluvia moderada",
+    65: "lluvia intensa",
+    71: "nevada débil",
+    73: "nevada moderada",
+    75: "nevada intensa",
+    80: "chubascos débiles",
+    81: "chubascos moderados",
+    82: "chubascos fuertes",
+    95: "tormenta eléctrica",
+    96: "tormenta con granizo",
+    99: "tormenta fuerte con granizo",
+}
+
+
+def obtener_clima() -> dict:
+    url = "https://api.open-meteo.com/v1/forecast"
+    params = {
+        "latitude": LAT,
+        "longitude": LON,
+        "current": "temperature_2m,relative_humidity_2m,apparent_temperature,wind_speed_10m,weather_code",
+        "timezone": "America/Argentina/Buenos_Aires",
+    }
+    resp = requests.get(url, params=params, timeout=15)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def armar_texto(data: dict) -> str:
+    actual = data["current"]
+    temp = round(actual["temperature_2m"])
+    sensacion = round(actual["apparent_temperature"])
+    humedad = round(actual["relative_humidity_2m"])
+    viento = round(actual["wind_speed_10m"])
+    descripcion = CODIGOS_CLIMA.get(actual["weather_code"], "condiciones variables")
+
+    hora = datetime.now().strftime("%H:%M")
+
+    texto = (
+        f"Son las {hora} horas. El clima en Resistencia: {descripcion}, "
+        f"con una temperatura de {temp} grados, sensación térmica de {sensacion} grados. "
+        f"Humedad del {humedad} por ciento, viento de {viento} kilómetros por hora."
+    )
+    return texto
+
+
+# ---------------------------------------------------------------------------
+# 2. Generar el audio TTS
+# ---------------------------------------------------------------------------
+
+def generar_audio(texto: str, path_salida: str) -> None:
+    tts = gTTS(text=texto, lang="es", tld="com.ar")
+    tts.save(path_salida)
+
+
+# ---------------------------------------------------------------------------
+# 3. Subir por SFTP
+# ---------------------------------------------------------------------------
+
+def subir_sftp(local_path: str, host: str, port: int, user: str, password: str, remote_dir: str) -> None:
+    transport = paramiko.Transport((host, port))
+    try:
+        transport.connect(username=user, password=password)
+        sftp = paramiko.SFTPClient.from_transport(transport)
+        try:
+            remote_path = f"{remote_dir.rstrip('/')}/{REMOTE_FILENAME}"
+            sftp.put(local_path, remote_path)
+            print(f"Subido correctamente a {remote_path}")
+        finally:
+            sftp.close()
+    finally:
+        transport.close()
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+def main():
+    sftp_host = os.environ.get("SFTP_HOST")
+    sftp_port = int(os.environ.get("SFTP_PORT", "2022"))
+    sftp_user = os.environ.get("SFTP_USER")
+    sftp_pass = os.environ.get("SFTP_PASS")
+    sftp_dir = os.environ.get("SFTP_REMOTE_DIR", "/clima")
+
+    faltantes = [
+        nombre
+        for nombre, valor in [
+            ("SFTP_HOST", sftp_host),
+            ("SFTP_USER", sftp_user),
+            ("SFTP_PASS", sftp_pass),
+        ]
+        if not valor
+    ]
+    if faltantes:
+        print(f"Faltan variables de entorno: {', '.join(faltantes)}", file=sys.stderr)
+        sys.exit(1)
+
+    print("Consultando clima...")
+    data = obtener_clima()
+
+    texto = armar_texto(data)
+    print(f"Texto generado: {texto}")
+
+    print("Generando audio...")
+    generar_audio(texto, LOCAL_MP3)
+
+    print("Subiendo por SFTP...")
+    subir_sftp(LOCAL_MP3, sftp_host, sftp_port, sftp_user, sftp_pass, sftp_dir)
+
+    print("Listo.")
+
+
+if __name__ == "__main__":
+    main()
