@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
 Script de locución automática de clima y noticias para AzuraCast.
-Adaptado para entornos efímeros (GitHub Actions) con saludos y noticias variables.
+Adaptado para entornos efímeros (GitHub Actions) con saludos variables y noticias completas (Título + Descripción).
 """
 
 import os
 import random
 import sys
+import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -60,7 +61,7 @@ CODIGOS_CLIMA = {
 }
 
 # ---------------------------------------------------------------------------
-# Números en español para que gTTS pronuncie bien la hora
+# Funciones de Tiempo y Saludos
 # ---------------------------------------------------------------------------
 
 NUMEROS = {
@@ -93,38 +94,23 @@ def hora_en_espanol(hora: int, minuto: int) -> str:
     texto_minuto = NUMEROS[minuto]
     return f"{texto_hora} con {texto_minuto} minutos"
 
-
 def saludo_segun_hora(hora_actual: int) -> str:
-    """
-    Devuelve un saludo al azar dependiendo de la franja horaria.
-    Así evitamos que el bot diga siempre la misma frase.
-    """
     if 6 <= hora_actual < 12:
         opciones = [
-            "Buenos días",
-            "Muy buenos días",
-            "Hola, buenos días",
-            "Excelente mañana",
-            "Arrancamos la mañana"
+            "Buenos días", "Muy buenos días", "Hola, buenos días",
+            "Excelente mañana", "Arrancamos la mañana"
         ]
     elif 12 <= hora_actual < 20:
         opciones = [
-            "Buenas tardes",
-            "Muy buenas tardes",
-            "Hola, buenas tardes",
-            "Excelente tarde",
-            "Continuamos la tarde"
+            "Buenas tardes", "Muy buenas tardes", "Hola, buenas tardes",
+            "Excelente tarde", "Continuamos la tarde"
         ]
     else:
         opciones = [
-            "Buenas noches",
-            "Muy buenas noches",
-            "Excelente noche",
-            "Hola, buenas noches",
-            "Cerramos el día"
+            "Buenas noches", "Muy buenas noches", "Excelente noche",
+            "Hola, buenas noches", "Cerramos el día"
         ]
     return random.choice(opciones)
-
 
 # ---------------------------------------------------------------------------
 # 1. Obtener clima
@@ -144,7 +130,6 @@ def obtener_clima() -> dict:
     resp = requests.get(url, params=params, timeout=15)
     resp.raise_for_status()
     return resp.json()
-
 
 PLANTILLAS_CLIMA = [
     (
@@ -174,7 +159,6 @@ PLANTILLAS_CLIMA = [
     ),
 ]
 
-
 def armar_texto_clima(data: dict) -> str:
     actual = data["current"]
     temp = round(actual["temperature_2m"])
@@ -193,9 +177,21 @@ def armar_texto_clima(data: dict) -> str:
         temp=temp, sensacion=sensacion, humedad=humedad, viento=viento,
     )
 
+# ---------------------------------------------------------------------------
+# Limpieza de textos RSS
+# ---------------------------------------------------------------------------
+
+def limpiar_texto_rss(texto: str) -> str:
+    """Limpia etiquetas HTML y códigos raros del texto del RSS."""
+    # Quitar cualquier etiqueta HTML como <p>, <br>, etc.
+    texto_limpio = re.sub(r'<[^>]+>', '', texto)
+    # Reemplazar códigos de espacio HTML por espacios reales
+    texto_limpio = texto_limpio.replace("&nbsp;", " ")
+    # Quitar espacios dobles y limpiar los bordes
+    return " ".join(texto_limpio.strip().split())
 
 # ---------------------------------------------------------------------------
-# 1b. Obtener titulares RSS (LÓGICA ROTATIVA POR HORA)
+# 1b. Obtener titulares RSS (TÍTULO + DESCRIPCIÓN)
 # ---------------------------------------------------------------------------
 
 def obtener_titular(url_feed: str, cantidad: int = 15) -> str | None:
@@ -212,11 +208,22 @@ def obtener_titular(url_feed: str, cantidad: int = 15) -> str | None:
 
         entradas_validas = []
         for entry in feed.entries[:cantidad]:
+            # Obtenemos tanto el título como la descripción (bajada de la noticia)
             titulo = getattr(entry, "title", "")
+            descripcion = getattr(entry, "description", "")
+
+            # Los limpiamos de basurita HTML o CDATA
+            titulo = limpiar_texto_rss(titulo)
+            descripcion = limpiar_texto_rss(descripcion)
+
             if titulo:
-                titulo = " ".join(titulo.strip().split())
-                if titulo:
-                    entradas_validas.append(titulo)
+                # Unimos el título y la descripción con un punto para que la voz haga una pausa
+                if descripcion:
+                    noticia_completa = f"{titulo}. {descripcion}"
+                else:
+                    noticia_completa = titulo
+                
+                entradas_validas.append(noticia_completa)
 
         if not entradas_validas:
             return None
@@ -231,7 +238,6 @@ def obtener_titular(url_feed: str, cantidad: int = 15) -> str | None:
     except Exception as e:
         print(f"No se pudo leer el feed {url_feed}: {e}", file=sys.stderr)
         return None
-
 
 PLANTILLAS_NOTICIAS = [
     (
@@ -260,7 +266,6 @@ PLANTILLAS_NOTICIAS = [
     ),
 ]
 
-
 def armar_texto_noticias(titular_mundo: str | None, titular_musica: str | None) -> str:
     partes = []
     if titular_mundo and titular_musica:
@@ -280,7 +285,6 @@ def armar_texto_noticias(titular_mundo: str | None, titular_musica: str | None) 
         )
     return " ".join(partes)
 
-
 # ---------------------------------------------------------------------------
 # 2. Generar audio TTS
 # ---------------------------------------------------------------------------
@@ -289,7 +293,6 @@ def generar_audio(texto: str, path_salida: str) -> None:
     print(f"Texto final: {texto}")
     tts = gTTS(text=texto, lang="es", tld="com.ar")
     tts.save(path_salida)
-
 
 # ---------------------------------------------------------------------------
 # 3. Subir por SFTP
@@ -308,7 +311,6 @@ def subir_sftp(local_path: str, host: str, port: int, user: str, password: str, 
             sftp.close()
     finally:
         transport.close()
-
 
 # ---------------------------------------------------------------------------
 # Main
