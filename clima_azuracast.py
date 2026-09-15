@@ -14,8 +14,11 @@ Qué hace:
 Usa Open-Meteo (open-meteo.com) para el clima: es gratis, no pide API key
 y funciona al instante, sin esperas de activación.
 
+También lee 1 titular de actualidad (Diario Red) y 1 titular de música
+(Planeta.pe) desde sus feeds RSS, y los suma al mismo audio.
+
 Requiere:
-    pip install requests gTTS paramiko
+    pip install requests gTTS paramiko feedparser
 
 Variables de entorno necesarias (configurar como Secrets en GitHub Actions):
     SFTP_HOST       -> host que te dio AzuraCast en "SFTP Users"
@@ -30,6 +33,7 @@ import random
 import sys
 from datetime import datetime
 
+import feedparser
 import requests
 from gtts import gTTS
 import paramiko
@@ -44,6 +48,9 @@ LON = -58.9867
 
 LOCAL_MP3 = "clima.mp3"
 REMOTE_FILENAME = "clima.mp3"  # nombre fijo: siempre pisa el mismo archivo
+
+RSS_MUNDO = "https://www.diario-red.com/rss/"
+RSS_MUSICA = "https://www.planeta.pe/noticias/musica/feed.xml"
 
 # ---------------------------------------------------------------------------
 # 1. Obtener el clima (Open-Meteo, sin API key)
@@ -151,6 +158,41 @@ def armar_texto(data: dict) -> str:
 
 
 # ---------------------------------------------------------------------------
+# 1b. Obtener titulares de RSS
+# ---------------------------------------------------------------------------
+
+def obtener_titular(url_feed: str) -> str | None:
+    """Devuelve el título de la primera noticia del feed, o None si falla."""
+    try:
+        feed = feedparser.parse(url_feed)
+        if feed.entries:
+            return feed.entries[0].title.strip()
+    except Exception as e:
+        print(f"No se pudo leer el feed {url_feed}: {e}", file=sys.stderr)
+    return None
+
+
+PLANTILLAS_NOTICIAS = [
+    "En la actualidad: {titular_mundo}. Y en el mundo de la música: {titular_musica}.",
+    "Esto es lo último: {titular_mundo}. Además, en música: {titular_musica}.",
+    "Te contamos: {titular_mundo}. Y del lado musical: {titular_musica}.",
+    "Las noticias del momento: {titular_mundo}. En música, se habla de: {titular_musica}.",
+]
+
+
+def armar_texto_noticias(titular_mundo: str | None, titular_musica: str | None) -> str:
+    partes = []
+    if titular_mundo and titular_musica:
+        plantilla = random.choice(PLANTILLAS_NOTICIAS)
+        partes.append(plantilla.format(titular_mundo=titular_mundo, titular_musica=titular_musica))
+    elif titular_mundo:
+        partes.append(f"En la actualidad: {titular_mundo}.")
+    elif titular_musica:
+        partes.append(f"En el mundo de la música: {titular_musica}.")
+    return " ".join(partes)
+
+
+# ---------------------------------------------------------------------------
 # 2. Generar el audio TTS
 # ---------------------------------------------------------------------------
 
@@ -204,12 +246,19 @@ def main():
 
     print("Consultando clima...")
     data = obtener_clima()
+    texto_clima = armar_texto(data)
+    print(f"Texto clima: {texto_clima}")
 
-    texto = armar_texto(data)
-    print(f"Texto generado: {texto}")
+    print("Consultando noticias...")
+    titular_mundo = obtener_titular(RSS_MUNDO)
+    titular_musica = obtener_titular(RSS_MUSICA)
+    texto_noticias = armar_texto_noticias(titular_mundo, titular_musica)
+    print(f"Texto noticias: {texto_noticias}")
+
+    texto_final = f"{texto_clima} {texto_noticias}".strip()
 
     print("Generando audio...")
-    generar_audio(texto, LOCAL_MP3)
+    generar_audio(texto_final, LOCAL_MP3)
 
     print("Subiendo por SFTP...")
     subir_sftp(LOCAL_MP3, sftp_host, sftp_port, sftp_user, sftp_pass, sftp_dir)
