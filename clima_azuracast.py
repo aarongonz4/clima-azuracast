@@ -26,6 +26,7 @@ Variables de entorno necesarias (configurar como Secrets en GitHub Actions):
 """
 
 import os
+import random
 import sys
 from datetime import datetime
 
@@ -87,6 +88,40 @@ def obtener_clima() -> dict:
     return resp.json()
 
 
+def saludo_segun_hora(hora_actual: int) -> str:
+    if 6 <= hora_actual < 12:
+        return "Buenos días"
+    if 12 <= hora_actual < 20:
+        return "Buenas tardes"
+    return "Buenas noches"
+
+
+# Varias plantillas distintas para que la locución no suene siempre igual.
+# {saludo}, {hora}, {descripcion}, {temp}, {sensacion}, {humedad}, {viento}
+PLANTILLAS = [
+    (
+        "{saludo}, son las {hora} horas. Así está el clima en Resistencia: "
+        "{descripcion}, con {temp} grados y sensación térmica de {sensacion} grados. "
+        "Humedad del {humedad} por ciento y vientos de {viento} kilómetros por hora."
+    ),
+    (
+        "{saludo}. Este es el reporte del tiempo en Resistencia, actualizado a las {hora} horas: "
+        "{descripcion}, temperatura de {temp} grados, que se siente como {sensacion}. "
+        "La humedad se ubica en {humedad} por ciento, con viento de {viento} kilómetros por hora."
+    ),
+    (
+        "{saludo}, {hora} horas. El tiempo hoy en Resistencia se presenta con {descripcion} "
+        "y una temperatura de {temp} grados, sensación térmica de {sensacion} grados. "
+        "Humedad del {humedad} por ciento, viento de {viento} kilómetros por hora."
+    ),
+    (
+        "Un informe del clima para Resistencia, {hora} horas: {descripcion}, "
+        "{temp} grados de temperatura y {sensacion} grados de sensación térmica. "
+        "Humedad {humedad} por ciento, con viento de {viento} kilómetros por hora. {saludo}."
+    ),
+]
+
+
 def armar_texto(data: dict) -> str:
     actual = data["current"]
     temp = round(actual["temperature_2m"])
@@ -95,12 +130,19 @@ def armar_texto(data: dict) -> str:
     viento = round(actual["wind_speed_10m"])
     descripcion = CODIGOS_CLIMA.get(actual["weather_code"], "condiciones variables")
 
-    hora = datetime.now().strftime("%H:%M")
+    ahora = datetime.now()
+    hora_str = ahora.strftime("%H:%M")
+    saludo = saludo_segun_hora(ahora.hour)
 
-    texto = (
-        f"Son las {hora} horas. El clima en Resistencia: {descripcion}, "
-        f"con una temperatura de {temp} grados, sensación térmica de {sensacion} grados. "
-        f"Humedad del {humedad} por ciento, viento de {viento} kilómetros por hora."
+    plantilla = random.choice(PLANTILLAS)
+    texto = plantilla.format(
+        saludo=saludo,
+        hora=hora_str,
+        descripcion=descripcion,
+        temp=temp,
+        sensacion=sensacion,
+        humedad=humedad,
+        viento=viento,
     )
     return texto
 
