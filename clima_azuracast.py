@@ -175,7 +175,7 @@ def generar_audio(texto: str, path_salida: str) -> None:
     # Configuración de voz premium (Neural2-A es femenina, muy natural)
     voice = texttospeech.VoiceSelectionParams(
         language_code="es-AR",
-        name="es-AR-Wavenet-B"
+        name="es-AR-Wavenet-A"
     )
     
     audio_config = texttospeech.AudioConfig(
