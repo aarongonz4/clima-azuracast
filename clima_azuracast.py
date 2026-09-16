@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Script de locución automática de clima y noticias para AzuraCast.
-Incluye: Camuflaje web, noticias completas y Google Cloud TTS (A Dos Voces).
+Incluye: Camuflaje web, noticias completas y Google Cloud TTS (Dos voces Chirp HD).
 """
 
 import os
@@ -163,7 +163,7 @@ def armar_texto_noticias(titular_mundo: str | None, titular_musica: str | None) 
     return " ".join(partes)
 
 # ---------------------------------------------------------------------------
-# Google Cloud TTS (Generación a DOS VOCES)
+# Google Cloud TTS (Generación a DOS VOCES - CHIRP HD)
 # ---------------------------------------------------------------------------
 
 def generar_audio_dos_voces(texto_clima: str, texto_noticias: str, path_salida: str) -> None:
@@ -172,24 +172,24 @@ def generar_audio_dos_voces(texto_clima: str, texto_noticias: str, path_salida: 
     
     audio_combinado = b""
 
-    # 1. AUDIO CLIMA (Voz Femenina)
+    # 1. AUDIO CLIMA (Voz Femenina Chirp HD)
     if texto_clima:
         print(f"Generando Clima (Voz Mujer): {texto_clima}")
         input_clima = texttospeech.SynthesisInput(text=texto_clima)
         voz_mujer = texttospeech.VoiceSelectionParams(
-            language_code="es-US",
-            name="es-US-Neural2-A"
+            language_code="en-US",            # <-- Importante: en-US para Chirp
+            name="en-US-Chirp-HD-F"           # <-- Voz de mujer que pediste
         )
         resp_clima = client.synthesize_speech(input=input_clima, voice=voz_mujer, audio_config=audio_config)
         audio_combinado += resp_clima.audio_content
 
-    # 2. AUDIO NOTICIAS (Voz Masculina)
+    # 2. AUDIO NOTICIAS (Voz Masculina Chirp HD)
     if texto_noticias:
         print(f"Generando Noticias (Voz Hombre): {texto_noticias}")
         input_noticias = texttospeech.SynthesisInput(text=texto_noticias)
         voz_hombre = texttospeech.VoiceSelectionParams(
-            language_code="es-US",
-            name="es-US-Neural2-B"
+            language_code="en-US",            # <-- Importante: en-US para Chirp
+            name="en-US-Chirp-HD-D"           # <-- Voz de hombre (la letra D es masculina)
         )
         resp_noticias = client.synthesize_speech(input=input_noticias, voice=voz_hombre, audio_config=audio_config)
         audio_combinado += resp_noticias.audio_content
