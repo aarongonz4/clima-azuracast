@@ -30,7 +30,7 @@ LOCAL_MP3 = "clima.mp3"
 REMOTE_FILENAME = "clima.mp3"
 
 # Si Diario Red sigue fallando, prueba cambiar este enlace por el de BBC Mundo u otro (ver nota al final)
-RSS_MUNDO = "https://www.diario-red.com/rss/"
+RSS_MUNDO = "https://feeds.bbci.co.uk/mundo/rss.xml"
 RSS_MUSICA = "https://www.planeta.pe/noticias/musica/feed.xml"
 
 # ---------------------------------------------------------------------------
