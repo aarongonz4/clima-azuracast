@@ -1,14 +1,7 @@
-# Guardar este archivo en tu repo de GitHub como:
-#   .github/workflows/clima-azuracast.yml
-#
-# Antes de activarlo, cargar los Secrets en:
-#   Settings -> Secrets and variables -> Actions -> New repository secret
-#   SFTP_HOST, SFTP_PORT, SFTP_USER, SFTP_PASS, SFTP_REMOTE_DIR
-
 name: Clima AzuraCast
 
 on:
-  workflow_dispatch: {}  # ahora lo dispara cron-job.org vía API, cada hora en el minuto 5
+  workflow_dispatch: {}
 
 jobs:
   actualizar-clima:
@@ -25,8 +18,15 @@ jobs:
       - name: Instalar dependencias
         run: pip install -r requirements.txt
 
+      - name: Crear archivo de credenciales de Google
+        run: |
+          cat << 'EOF' > google_credentials.json
+          ${{ secrets.GCP_CREDENTIALS }}
+          EOF
+
       - name: Ejecutar script de clima
         env:
+          GOOGLE_APPLICATION_CREDENTIALS: google_credentials.json
           SFTP_HOST: ${{ secrets.SFTP_HOST }}
           SFTP_PORT: ${{ secrets.SFTP_PORT }}
           SFTP_USER: ${{ secrets.SFTP_USER }}
