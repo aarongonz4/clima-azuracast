@@ -19,10 +19,9 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Crear archivo de credenciales de Google
-        run: |
-          cat << 'EOF' > google_credentials.json
-          ${{ secrets.GCP_CREDENTIALS }}
-          EOF
+        env:
+          GCP_JSON: ${{ secrets.GCP_CREDENTIALS }}
+        run: echo "$GCP_JSON" > google_credentials.json
 
       - name: Ejecutar script de clima
         env:
