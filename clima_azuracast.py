@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Script de locución automática de clima y noticias para AzuraCast.
-Adaptado para entornos efímeros (GitHub Actions) con saludos variables y noticias completas (Título + Descripción).
+Adaptado con camuflaje de navegador para evitar bloqueos anti-bots.
 """
 
 import os
@@ -29,6 +29,7 @@ ZONA_HORARIA = ZoneInfo("America/Argentina/Buenos_Aires")
 LOCAL_MP3 = "clima.mp3"
 REMOTE_FILENAME = "clima.mp3"
 
+# Si Diario Red sigue fallando, prueba cambiar este enlace por el de BBC Mundo u otro (ver nota al final)
 RSS_MUNDO = "https://www.diario-red.com/rss/"
 RSS_MUSICA = "https://www.planeta.pe/noticias/musica/feed.xml"
 
@@ -183,11 +184,8 @@ def armar_texto_clima(data: dict) -> str:
 
 def limpiar_texto_rss(texto: str) -> str:
     """Limpia etiquetas HTML y códigos raros del texto del RSS."""
-    # Quitar cualquier etiqueta HTML como <p>, <br>, etc.
     texto_limpio = re.sub(r'<[^>]+>', '', texto)
-    # Reemplazar códigos de espacio HTML por espacios reales
     texto_limpio = texto_limpio.replace("&nbsp;", " ")
-    # Quitar espacios dobles y limpiar los bordes
     return " ".join(texto_limpio.strip().split())
 
 # ---------------------------------------------------------------------------
@@ -196,10 +194,11 @@ def limpiar_texto_rss(texto: str) -> str:
 
 def obtener_titular(url_feed: str, cantidad: int = 15) -> str | None:
     try:
+        # CAMUFLAJE: Le decimos a la página que somos Google Chrome desde Windows, no un robot de código.
         headers = {
-            "User-Agent": "Mozilla/5.0 (compatible; NogaradioClima/1.0)",
-            "Cache-Control": "no-cache",
-            "Pragma": "no-cache",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "Accept": "application/rss+xml, application/xml, text/xml, */*",
+            "Accept-Language": "es-AR,es;q=0.9,en-US;q=0.8,en;q=0.7",
         }
 
         resp = requests.get(url_feed, headers=headers, timeout=15)
@@ -208,16 +207,13 @@ def obtener_titular(url_feed: str, cantidad: int = 15) -> str | None:
 
         entradas_validas = []
         for entry in feed.entries[:cantidad]:
-            # Obtenemos tanto el título como la descripción (bajada de la noticia)
             titulo = getattr(entry, "title", "")
             descripcion = getattr(entry, "description", "")
 
-            # Los limpiamos de basurita HTML o CDATA
             titulo = limpiar_texto_rss(titulo)
             descripcion = limpiar_texto_rss(descripcion)
 
             if titulo:
-                # Unimos el título y la descripción con un punto para que la voz haga una pausa
                 if descripcion:
                     noticia_completa = f"{titulo}. {descripcion}"
                 else:
@@ -228,7 +224,7 @@ def obtener_titular(url_feed: str, cantidad: int = 15) -> str | None:
         if not entradas_validas:
             return None
 
-        # Rotación basada en la hora exacta para no repetir
+        # Rotación basada en la hora
         ahora = datetime.now(ZONA_HORARIA)
         hora_actual = ahora.hour
         indice_elegido = hora_actual % len(entradas_validas)
@@ -236,7 +232,7 @@ def obtener_titular(url_feed: str, cantidad: int = 15) -> str | None:
         return entradas_validas[indice_elegido]
 
     except Exception as e:
-        print(f"No se pudo leer el feed {url_feed}: {e}", file=sys.stderr)
+        print(f"Error bloqueado por la web al leer el feed {url_feed}: {e}", file=sys.stderr)
         return None
 
 PLANTILLAS_NOTICIAS = [
