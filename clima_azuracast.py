@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Script de locución automática de clima y noticias para AzuraCast.
-Incluye: Camuflaje web, noticias completas y Google Cloud TTS (Dos voces Chirp HD).
+Incluye: Camuflaje web, noticias rotativas y Google Cloud TTS (Dos voces Chirp HD turnándose).
 """
 
 import os
@@ -145,6 +145,7 @@ def obtener_titular(url_feed: str, cantidad: int = 15) -> str | None:
         if not entradas_validas:
             return None
 
+        # ¡Aquí sigue funcionando la variación de noticias! 
         ahora = datetime.now(ZONA_HORARIA)
         return entradas_validas[ahora.hour % len(entradas_validas)]
 
@@ -163,7 +164,7 @@ def armar_texto_noticias(titular_mundo: str | None, titular_musica: str | None) 
     return " ".join(partes)
 
 # ---------------------------------------------------------------------------
-# Google Cloud TTS (Generación a DOS VOCES - CHIRP HD)
+# Google Cloud TTS (Generación a DOS VOCES - CHIRP HD TURNÁNDOSE)
 # ---------------------------------------------------------------------------
 
 def generar_audio_dos_voces(texto_clima: str, texto_noticias: str, path_salida: str) -> None:
@@ -171,27 +172,38 @@ def generar_audio_dos_voces(texto_clima: str, texto_noticias: str, path_salida: 
     audio_config = texttospeech.AudioConfig(audio_encoding=texttospeech.AudioEncoding.MP3)
     
     audio_combinado = b""
+    ahora = datetime.now(ZONA_HORARIA)
 
-    # 1. AUDIO CLIMA (Voz Femenina Chirp HD)
+    # Lógica de turnos: Hora PAR vs Hora IMPAR
+    if ahora.hour % 2 == 0:
+        # Hora Par (ej: 10:00, 12:00) -> Mujer: Clima | Hombre: Noticias
+        voz_clima_nombre = "en-US-Chirp-HD-F"
+        voz_noticias_nombre = "en-US-Chirp-HD-D"
+        print("Turno actual (Hora Par): Mujer (Clima) -> Hombre (Noticias)")
+    else:
+        # Hora Impar (ej: 11:00, 13:00) -> Hombre: Clima | Mujer: Noticias
+        voz_clima_nombre = "en-US-Chirp-HD-D"
+        voz_noticias_nombre = "en-US-Chirp-HD-F"
+        print("Turno actual (Hora Impar): Hombre (Clima) -> Mujer (Noticias)")
+
+    # 1. AUDIO CLIMA 
     if texto_clima:
-        print(f"Generando Clima (Voz Mujer): {texto_clima}")
         input_clima = texttospeech.SynthesisInput(text=texto_clima)
-        voz_mujer = texttospeech.VoiceSelectionParams(
-            language_code="en-US",            # <-- Importante: en-US para Chirp
-            name="en-US-Chirp-HD-F"           # <-- Voz de mujer que pediste
+        voz_clima = texttospeech.VoiceSelectionParams(
+            language_code="en-US",
+            name=voz_clima_nombre
         )
-        resp_clima = client.synthesize_speech(input=input_clima, voice=voz_mujer, audio_config=audio_config)
+        resp_clima = client.synthesize_speech(input=input_clima, voice=voz_clima, audio_config=audio_config)
         audio_combinado += resp_clima.audio_content
 
-    # 2. AUDIO NOTICIAS (Voz Masculina Chirp HD)
+    # 2. AUDIO NOTICIAS 
     if texto_noticias:
-        print(f"Generando Noticias (Voz Hombre): {texto_noticias}")
         input_noticias = texttospeech.SynthesisInput(text=texto_noticias)
-        voz_hombre = texttospeech.VoiceSelectionParams(
-            language_code="en-US",            # <-- Importante: en-US para Chirp
-            name="en-US-Chirp-HD-D"           # <-- Voz de hombre (la letra D es masculina)
+        voz_noticias = texttospeech.VoiceSelectionParams(
+            language_code="en-US",
+            name=voz_noticias_nombre
         )
-        resp_noticias = client.synthesize_speech(input=input_noticias, voice=voz_hombre, audio_config=audio_config)
+        resp_noticias = client.synthesize_speech(input=input_noticias, voice=voz_noticias, audio_config=audio_config)
         audio_combinado += resp_noticias.audio_content
 
     # 3. GUARDAR TODO JUNTO EN UN SOLO ARCHIVO MP3
