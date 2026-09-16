@@ -28,7 +28,7 @@ ZONA_HORARIA = ZoneInfo("America/Argentina/Buenos_Aires")
 LOCAL_MP3 = "clima.mp3"
 REMOTE_FILENAME = "clima.mp3"
 
-RSS_MUNDO = "https://www.diario-red.com/rss/"
+RSS_MUNDO = "https://feeds.bbci.co.uk/mundo/rss.xml"
 RSS_MUSICA = "https://www.planeta.pe/noticias/musica/feed.xml"
 
 # ---------------------------------------------------------------------------
