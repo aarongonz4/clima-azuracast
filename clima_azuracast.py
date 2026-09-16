@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Script de locución automática de clima y noticias para AzuraCast.
-Incluye: Camuflaje web, noticias completas (Título + Descripción) y Google Cloud TTS (Neural2).
+Incluye: Camuflaje web, noticias completas y Google Cloud TTS (A Dos Voces).
 """
 
 import os
@@ -94,9 +94,9 @@ def obtener_clima() -> dict:
     return resp.json()
 
 PLANTILLAS_CLIMA = [
-    "{saludo}. En Argentina son las {hora} horas. Nogaradio te cuenta cómo está el tiempo en Resistencia: {descripcion}, con {temp} grados y sensación térmica de {sensacion} grados. Humedad del {humedad} por ciento y vientos de {viento} kilómetros por hora.",
-    "{saludo}. En Argentina son las {hora} horas. Este es el informe del tiempo de Nogaradio. En Resistencia tenemos {descripcion}, {temp} grados de temperatura y una sensación térmica de {sensacion} grados. La humedad es del {humedad} por ciento.",
-    "Nogaradio te informa. En Argentina son las {hora} horas. Así está el clima en Resistencia: {descripcion}, {temp} grados de temperatura y {sensacion} grados de sensación térmica. Humedad del {humedad} por ciento y viento de {viento} kilómetros por hora.",
+    "{saludo}. En Argentina son las {hora} horas. Nogaradio te cuenta cómo está el tiempo en Resistencia: {descripcion}, con {temp} grados y sensación térmica de {sensacion} grados. Humedad del {humedad} por ciento y vientos de {viento} kilómetros por hora. Ahora los dejamos con las noticias.",
+    "{saludo}. En Argentina son las {hora} horas. Este es el informe del tiempo de Nogaradio. En Resistencia tenemos {descripcion}, {temp} grados de temperatura y una sensación térmica de {sensacion} grados. La humedad es del {humedad} por ciento. A continuación, el resumen de noticias.",
+    "Nogaradio te informa. En Argentina son las {hora} horas. Así está el clima en Resistencia: {descripcion}, {temp} grados de temperatura y {sensacion} grados de sensación térmica. Humedad del {humedad} por ciento y viento de {viento} kilómetros por hora. Pasamos a la información.",
 ]
 
 def armar_texto_clima(data: dict) -> str:
@@ -155,40 +155,49 @@ def obtener_titular(url_feed: str, cantidad: int = 15) -> str | None:
 def armar_texto_noticias(titular_mundo: str | None, titular_musica: str | None) -> str:
     partes = []
     if titular_mundo and titular_musica:
-        partes.append(f"Y ahora, te contamos las noticias más importantes. En la actualidad: {titular_mundo}. Y en música: {titular_musica}. Ya estás informado. Seguimos con más música en Nogaradio.")
+        partes.append(f"En la actualidad: {titular_mundo}. Y en música: {titular_musica}. Ya estás informado. Seguimos con más música en Nogaradio.")
     elif titular_mundo:
-        partes.append(f"Y ahora, te contamos las noticias más importantes. En la actualidad: {titular_mundo}. Seguimos con más música en Nogaradio.")
+        partes.append(f"En la actualidad: {titular_mundo}. Ya estás informado. Seguimos con más música en Nogaradio.")
     elif titular_musica:
-        partes.append(f"Y ahora, una novedad del mundo de la música: {titular_musica}. Seguimos con más música en Nogaradio.")
+        partes.append(f"Una novedad del mundo de la música: {titular_musica}. Seguimos con más música en Nogaradio.")
     return " ".join(partes)
 
 # ---------------------------------------------------------------------------
-# Google Cloud TTS
+# Google Cloud TTS (Generación a DOS VOCES)
 # ---------------------------------------------------------------------------
 
-def generar_audio(texto: str, path_salida: str) -> None:
-    print(f"Texto a locutar: {texto}")
-    
+def generar_audio_dos_voces(texto_clima: str, texto_noticias: str, path_salida: str) -> None:
     client = texttospeech.TextToSpeechClient()
-    synthesis_input = texttospeech.SynthesisInput(text=texto)
-
-    # Configuración de voz premium (Neural2-A es femenina, muy natural)
-    voice = texttospeech.VoiceSelectionParams(
-        language_code="es-AR",
-        name="es-AR-Wavenet-A"
-    )
+    audio_config = texttospeech.AudioConfig(audio_encoding=texttospeech.AudioEncoding.MP3)
     
-    audio_config = texttospeech.AudioConfig(
-        audio_encoding=texttospeech.AudioEncoding.MP3
-    )
+    audio_combinado = b""
 
-    response = client.synthesize_speech(
-        input=synthesis_input, voice=voice, audio_config=audio_config
-    )
+    # 1. AUDIO CLIMA (Voz Femenina)
+    if texto_clima:
+        print(f"Generando Clima (Voz Mujer): {texto_clima}")
+        input_clima = texttospeech.SynthesisInput(text=texto_clima)
+        voz_mujer = texttospeech.VoiceSelectionParams(
+            language_code="es-US",
+            name="es-US-Neural2-A"
+        )
+        resp_clima = client.synthesize_speech(input=input_clima, voice=voz_mujer, audio_config=audio_config)
+        audio_combinado += resp_clima.audio_content
 
+    # 2. AUDIO NOTICIAS (Voz Masculina)
+    if texto_noticias:
+        print(f"Generando Noticias (Voz Hombre): {texto_noticias}")
+        input_noticias = texttospeech.SynthesisInput(text=texto_noticias)
+        voz_hombre = texttospeech.VoiceSelectionParams(
+            language_code="es-US",
+            name="es-US-Neural2-B"
+        )
+        resp_noticias = client.synthesize_speech(input=input_noticias, voice=voz_hombre, audio_config=audio_config)
+        audio_combinado += resp_noticias.audio_content
+
+    # 3. GUARDAR TODO JUNTO EN UN SOLO ARCHIVO MP3
     with open(path_salida, "wb") as out:
-        out.write(response.audio_content)
-        print(f"Audio generado por Google Cloud TTS en {path_salida}")
+        out.write(audio_combinado)
+        print(f"¡Audio final combinado a DOS VOCES guardado exitosamente en {path_salida}!")
 
 # ---------------------------------------------------------------------------
 # Subida SFTP y Main
@@ -228,10 +237,8 @@ def main():
     titular_musica = obtener_titular(RSS_MUSICA, 15)
     texto_noticias = armar_texto_noticias(titular_mundo, titular_musica)
     
-    texto_final = f"{texto_clima} {texto_noticias}".strip()
-    
-    print("Generando audio con Google Cloud...")
-    generar_audio(texto_final, LOCAL_MP3)
+    print("Generando audios combinados con Google Cloud...")
+    generar_audio_dos_voces(texto_clima, texto_noticias, LOCAL_MP3)
     
     print("Subiendo por SFTP...")
     subir_sftp(LOCAL_MP3, sftp_host, sftp_port, sftp_user, sftp_pass, sftp_dir)
