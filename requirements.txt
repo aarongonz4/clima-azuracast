@@ -1,4 +1,4 @@
 requests
-gTTS
 paramiko
 feedparser
+google-cloud-texttospeech
