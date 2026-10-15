@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """
 Script de locución automática de clima y noticias para AzuraCast.
-Incluye: Camuflaje web, noticias rotativas y Google Cloud TTS (Dos voces en Español Neutro turnándose).
+Incluye: Reintentos anti-caídas (503) para el clima, camuflaje web, noticias rotativas y Google Cloud TTS (Dos voces en Español Neutro turnándose).
 """
 
 import os
 import random
 import sys
 import re
+import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -79,19 +80,30 @@ def saludo_segun_hora(hora_actual: int) -> str:
     return random.choice(["Buenas noches", "Muy buenas noches", "Excelente noche", "Hola, buenas noches"])
 
 # ---------------------------------------------------------------------------
-# Clima
+# Clima (BLINDADO CON REINTENTOS Y PLAN DE EMERGENCIA)
 # ---------------------------------------------------------------------------
 
-def obtener_clima() -> dict:
+def obtener_clima(reintentos: int = 3, espera: int = 5) -> dict | None:
     url = "https://api.open-meteo.com/v1/forecast"
     params = {
         "latitude": LAT, "longitude": LON,
         "current": "temperature_2m,relative_humidity_2m,apparent_temperature,wind_speed_10m,weather_code",
         "timezone": "America/Argentina/Buenos_Aires",
     }
-    resp = requests.get(url, params=params, timeout=15)
-    resp.raise_for_status()
-    return resp.json()
+    
+    for intento in range(1, reintentos + 1):
+        try:
+            resp = requests.get(url, params=params, timeout=15)
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as e:
+            print(f"Intento {intento}/{reintentos} falló al consultar Open-Meteo: {e}", file=sys.stderr)
+            if intento < reintentos:
+                print(f"Esperando {espera} segundos antes de reintentar...")
+                time.sleep(espera)
+                
+    print("AVISO: Open-Meteo no respondió. Se usará locución sin datos del clima.", file=sys.stderr)
+    return None
 
 PLANTILLAS_CLIMA = [
     "{saludo}. En Argentina son las {hora} horas. Nogaradio te cuenta cómo está el tiempo en Resistencia: {descripcion}, con {temp} grados y sensación térmica de {sensacion} grados. Humedad del {humedad} por ciento y vientos de {viento} kilómetros por hora. Ahora los dejamos con las noticias.",
@@ -99,17 +111,21 @@ PLANTILLAS_CLIMA = [
     "Nogaradio te informa. En Argentina son las {hora} horas. Así está el clima en Resistencia: {descripcion}, {temp} grados de temperatura y {sensacion} grados de sensación térmica. Humedad del {humedad} por ciento y viento de {viento} kilómetros por hora. Pasamos a la información.",
 ]
 
-def armar_texto_clima(data: dict) -> str:
+def armar_texto_clima(data: dict | None) -> str:
+    ahora = datetime.now(ZONA_HORARIA)
+    hora_str = hora_en_espanol(ahora.hour, ahora.minute)
+    saludo = saludo_segun_hora(ahora.hour)
+
+    # Plan de emergencia si Open-Meteo sigue caído tras los 3 intentos
+    if not data or "current" not in data:
+        return f"{saludo}. En Argentina son las {hora_str} horas. Nogaradio te acompaña en cada momento. A continuación, pasamos al resumen de noticias."
+
     actual = data["current"]
     temp = round(actual["temperature_2m"])
     sensacion = round(actual["apparent_temperature"])
     humedad = round(actual["relative_humidity_2m"])
     viento = round(actual["wind_speed_10m"])
     descripcion = CODIGOS_CLIMA.get(actual["weather_code"], "condiciones variables")
-
-    ahora = datetime.now(ZONA_HORARIA)
-    hora_str = hora_en_espanol(ahora.hour, ahora.minute)
-    saludo = saludo_segun_hora(ahora.hour)
     
     plantilla = random.choice(PLANTILLAS_CLIMA)
     return plantilla.format(saludo=saludo, hora=hora_str, descripcion=descripcion, temp=temp, sensacion=sensacion, humedad=humedad, viento=viento)
@@ -241,7 +257,8 @@ def main():
         sys.exit(1)
 
     print("Consultando clima...")
-    texto_clima = armar_texto_clima(obtener_clima())
+    datos_clima = obtener_clima()
+    texto_clima = armar_texto_clima(datos_clima)
     
     print("Consultando noticias...")
     titular_mundo = obtener_titular(RSS_MUNDO, 15)
