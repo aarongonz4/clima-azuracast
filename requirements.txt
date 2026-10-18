@@ -2,3 +2,5 @@ requests
 paramiko
 feedparser
 google-cloud-texttospeech
+pydub
+numpy
