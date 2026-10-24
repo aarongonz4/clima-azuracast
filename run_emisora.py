@@ -30,9 +30,7 @@ from pydub import AudioSegment
 # ---------------------------------------------------------------------------
 
 NOMBRE_EMISORA = os.environ.get("NOMBRE_EMISORA", "Radio Redimidos por Jesús").strip()
-# Velocidad neutra para que Elena y Tomás suenen más conversacionales.
-# Se puede personalizar sin modificar el código mediante la variable VELOCIDAD_VOZ.
-VELOCIDAD_VOZ = os.environ.get("VELOCIDAD_VOZ", "+0%").strip()
+VELOCIDAD_VOZ = os.environ.get("VELOCIDAD_VOZ", "+5%").strip()
 
 CIUDAD = "Resistencia"
 LAT = -27.4514
@@ -712,107 +710,22 @@ def sintetizar_voz(texto: str, es_mujer: bool) -> np.ndarray:
 
 
 def procesar_voz(x: np.ndarray) -> np.ndarray:
-    """Procesamiento vocal suave: calidez, control de picos y estéreo discreto."""
-    # Filtrado moderado para limpiar graves sin adelgazar la voz.
-    x = _filtrar(x, pasa_altos=75, pasa_bajos=15000)
-    calidez = _filtrar(x, pasa_altos=105, pasa_bajos=260)
-    presencia = _filtrar(x, pasa_altos=2200, pasa_bajos=4800)
-    aire = np.tanh(_filtrar(x, pasa_altos=6500) * 1.4) * 0.045
-    x = x + 0.12 * calidez + 0.13 * presencia + aire
+    """Procesador vocal FM con cuerpo, presencia y micro-doubler estéreo."""
+    x = _filtrar(x, pasa_altos=80)
+    calidez = _filtrar(x, pasa_altos=110, pasa_bajos=250)
+    presencia = _filtrar(x, pasa_altos=2500, pasa_bajos=5800)
+    aire = np.tanh(_filtrar(x, pasa_altos=6500) * 2.0) * 0.10
+    x = x + 0.22 * calidez + 0.26 * presencia + aire
 
-    # Micro-doubler casi imperceptible: aporta anchura sin dar sensación de voz robótica.
-    d_l = int(SR * 0.012)
+    d_l = int(SR * 0.011)
     d_r = int(SR * 0.016)
     doble = np.zeros_like(x)
-    doble[d_l:, 0] = x[:-d_l, 0] * 0.055
-    doble[d_r:, 1] = x[:-d_r, 1] * 0.055
-    x = x + _filtrar(doble, pasa_altos=280, pasa_bajos=4200)
+    doble[d_l:, 0] = x[:-d_l, 0] * 0.12
+    doble[d_r:, 1] = x[:-d_r, 1] * 0.12
+    x = x + _filtrar(doble, pasa_altos=250, pasa_bajos=4000)
 
-    # Compresión más tranquila para conservar los cambios naturales de la locución.
-    x = _comprimir(x, thr_db=-24.0, ratio=2.3, ataque_ms=9.0, relajo_ms=155.0)
-    return _pico(x, 0.86)
-
-
-def agregar_eco_final_frases(x: np.ndarray) -> np.ndarray:
-    """Añade un eco corto y discreto a los finales de frase detectados por las pausas.
-
-    No modifica ni elimina palabras. Solo duplica suavemente el final de la frase,
-    aprovechando las pausas naturales de la locución; al final deja una cola breve.
-    """
-    if x.size == 0:
-        return x
-
-    tam_bloque = max(1, int(SR * 0.010))  # análisis de energía en bloques de 10 ms
-    cantidad = int(np.ceil(len(x) / tam_bloque))
-    mono = np.max(np.abs(x), axis=1)
-    relleno = np.pad(mono, (0, cantidad * tam_bloque - len(mono)))
-    bloques = relleno.reshape(cantidad, tam_bloque)
-    rms = np.sqrt(np.mean(bloques ** 2, axis=1))
-    umbral = max(float(np.max(rms)) * 0.045, 0.0035)
-    activo = rms > umbral
-
-    # Detecta tramos hablados y une micro-pausas internas de hasta 110 ms.
-    indices = np.flatnonzero(activo)
-    if len(indices) == 0:
-        return x
-    tramos = []
-    inicio = fin = int(indices[0])
-    for indice in indices[1:]:
-        indice = int(indice)
-        if indice - fin <= 12:
-            fin = indice
-        else:
-            tramos.append((inicio, fin + 1))
-            inicio = fin = indice
-    tramos.append((inicio, fin + 1))
-    tramos = [(a * tam_bloque, min(b * tam_bloque, len(x)))
-              for a, b in tramos if (b - a) >= 7]
-
-    if not tramos:
-        return x
-
-    # Solo ampliamos el audio si el eco final no entra en el silencio que ya trae el TTS.
-    fin_ultima_frase = tramos[-1][1]
-    longitud_necesaria = max(len(x), fin_ultima_frase + int(SR * 0.32))
-    salida = np.pad(x, ((0, longitud_necesaria - len(x)), (0, 0)))
-    retardo_1 = int(SR * 0.045)
-    retardo_2 = int(SR * 0.165)
-
-    for i, (inicio, fin) in enumerate(tramos):
-        es_ultimo = i == len(tramos) - 1
-        siguiente_inicio = tramos[i + 1][0] if not es_ultimo else len(x)
-        pausa_ms = (siguiente_inicio - fin) * 1000.0 / SR
-
-        # No se fuerza un eco en pausas muy cortas para evitar que ensucie la siguiente frase.
-        if not es_ultimo and pausa_ms < 215:
-            continue
-
-        duracion_eco = min(int(SR * 0.135), max(int(SR * 0.075), fin - inicio))
-        fuente = x[max(inicio, fin - duracion_eco):fin].copy()
-        if len(fuente) < int(SR * 0.060):
-            continue
-
-        # Fade-in corto y caída exponencial: eco audible, pero no exagerado.
-        t = np.linspace(0.0, 1.0, len(fuente), endpoint=True)
-        envolvente = np.exp(-3.0 * t)
-        fade_in = min(int(SR * 0.008), len(fuente))
-        if fade_in > 1:
-            envolvente[:fade_in] *= np.linspace(0.0, 1.0, fade_in)
-        eco = fuente * envolvente[:, None]
-
-        pos_1 = fin + retardo_1
-        limite_1 = min(pos_1 + len(eco), len(salida))
-        if limite_1 > pos_1:
-            salida[pos_1:limite_1] += eco[:limite_1 - pos_1] * 0.15
-
-        # Segunda repetición todavía más baja, solo si hay espacio suficiente o es el final.
-        if es_ultimo or pausa_ms >= 320:
-            pos_2 = fin + retardo_2
-            limite_2 = min(pos_2 + len(eco), len(salida))
-            if limite_2 > pos_2:
-                salida[pos_2:limite_2] += eco[:limite_2 - pos_2] * 0.065
-
-    return salida
+    x = _comprimir(x, thr_db=-22.5, ratio=3.5, ataque_ms=4.0, relajo_ms=120.0)
+    return _pico(x, 0.90)
 
 
 def generar_spot(texto_voz_1: str, texto_voz_2: str, estado_clima: str, path_salida: str) -> None:
@@ -826,8 +739,8 @@ def generar_spot(texto_voz_1: str, texto_voz_2: str, estado_clima: str, path_sal
     else:
         print(f"Dúo Redimidos (Hora Impar - {momento}): Abre Tomás (Clima) -> Transición FM -> Cierra Elena (Institucional)")
 
-    voz_1 = agregar_eco_final_frases(procesar_voz(sintetizar_voz(texto_voz_1, abre_mujer)))
-    voz_2 = agregar_eco_final_frases(procesar_voz(sintetizar_voz(texto_voz_2, not abre_mujer)))
+    voz_1 = procesar_voz(sintetizar_voz(texto_voz_1, abre_mujer))
+    voz_2 = procesar_voz(sintetizar_voz(texto_voz_2, not abre_mujer))
 
     intro = _pico(sintetizar_intro(momento), 0.94)
     trans = _pico(sintetizar_transicion(momento), 0.94)
