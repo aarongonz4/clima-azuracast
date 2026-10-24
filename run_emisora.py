@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 """
-Spot automático exclusivo para Radio Redimidos por Jesús (run_emisora.py) - Edición Vocal FX & Dúo FM.
+Spot automático exclusivo para Radio Redimidos por Jesús (run_emisora.py) - Edición Cristiana Dúo FM + Vocal FX.
 
-Novedades de esta versión:
-  - Vocal FX aleatorios en los finales de frase: alterna entre Eco Ping-Pong FM (Throw Delay),
-    Stutter Glitch rítmico + Eco, Filtro Megáfono FM o Cierre Limpio para que varíe en cada salida.
-  - Edición automática de locución: recorta silencios muertos de Edge TTS y suaviza la entonación
-    para que Elena y Tomás suenen naturales y bien pegados a los efectos como un spot editado a mano.
-  - Dúo dinámico (Mujer + Hombre combinados) con música y clima según la hora en Resistencia.
+Qué incluye:
+  - Amplio repertorio de frases cristianas, bendiciones para la familia/hogar y palabras de fe según la hora.
+  - Dúo dinámico (Elena y Tomás combinados en cada spot) con separador de transición FM en el medio.
+  - Vocal FX aleatorios en la última frase (Eco Ping-Pong FM, Glitch Stutter + Eco, Filtro Radio o Limpio).
+  - Canción instrumental de fondo y efectos climáticos reales según el tiempo en Resistencia.
 """
 
 import asyncio
@@ -31,7 +30,6 @@ from pydub import AudioSegment
 # ---------------------------------------------------------------------------
 
 NOMBRE_EMISORA = os.environ.get("NOMBRE_EMISORA", "Radio Redimidos por Jesús").strip()
-# Velocidad +2% suena mucho más natural y humana en las voces argentinas de Edge
 VELOCIDAD_VOZ = os.environ.get("VELOCIDAD_VOZ", "+2%").strip()
 
 CIUDAD = "Resistencia"
@@ -46,10 +44,9 @@ ASSETS_DIR = "assets"
 EXTENSIONES = (".mp3", ".wav", ".ogg", ".m4a", ".flac")
 SR = 44100
 
-# Niveles de mezcla en dB
 REFERENCIA_RMS_DB = -18.5
-EFECTOS_DB = -1.8          # Sweepers e impactos FM bien presentes
-AMBIENTE_DB = -8.0         # Canción de fondo + clima bien claros
+EFECTOS_DB = -1.8
+AMBIENTE_DB = -8.0
 CAMA_EXTERNA_DB = -8.5
 
 # ---------------------------------------------------------------------------
@@ -107,14 +104,32 @@ def momento_del_dia(hora_actual: int) -> str:
 def saludo_segun_hora(hora_actual: int) -> str:
     momento = momento_del_dia(hora_actual)
     if momento == "manana":
-        return random.choice(["Hola, muy buenos días", "Buenos días, qué lindo acompañarte", "Excelente mañana para vos"])
+        return random.choice([
+            "Hola, muy buenos días, que Dios bendiga tu vida",
+            "Buenos días, que la paz del Señor llene tu hogar en esta mañana",
+            "Muy buenos días, bendiciones para vos y toda tu familia",
+            "Excelente mañana, damos gracias a Dios por este nuevo día",
+            "Buenos días, qué alegría compartir esta mañana de bendición con vos",
+        ])
     elif momento == "tarde":
-        return random.choice(["Hola, muy buenas tardes", "Buenas tardes, qué bueno estar con vos", "Excelente tarde para todos"])
-    return random.choice(["Hola, muy buenas noches", "Buenas noches, gracias por tu compañía", "Excelente noche para vos"])
+        return random.choice([
+            "Hola, muy buenas tardes, muchas bendiciones para vos",
+            "Buenas tardes, que la gracia y el amor de Dios te acompañen hoy",
+            "Muy buenas tardes, bendiciones para tu familia y tu trabajo",
+            "Excelente tarde, que el Señor renueve tus fuerzas en cada momento",
+            "Buenas tardes, qué lindo estar conectados en una tarde de bendición",
+        ])
+    return random.choice([
+        "Hola, muy buenas noches, que la paz de Jesús llene tu hogar",
+        "Buenas noches, muchas bendiciones para vos y tu familia",
+        "Muy buenas noches, damos gracias a Dios por todo lo vivido hoy",
+        "Excelente noche, que la presencia del Señor acompañe tu descanso",
+        "Buenas noches, gracias por dejarnos entrar en tu hogar con una bendición",
+    ])
 
 
 # ---------------------------------------------------------------------------
-# Guion estilo Spot FM (Frases cortas, naturales y con gancho final para el Eco)
+# Guion Cristiano a Dos Voces (Voz 1: Saludo + Clima | Voz 2: Bendición + Cierre FM)
 # ---------------------------------------------------------------------------
 
 def obtener_clima(reintentos: int = 3, espera: int = 5) -> dict | None:
@@ -141,17 +156,23 @@ def armar_dialogo_spot(data: dict | None) -> tuple[str, str]:
     hora_str = hora_en_espanol(ahora.hour, ahora.minute)
     saludo = saludo_segun_hora(ahora.hour)
 
-    # Frases de cierre con remate corto al final para que el efecto Eco/Glitch quede espectacular
+    # Repertorio amplio de cierres cristianos + frase radial corta al final para el efecto Eco/Glitch
     frases_cierre_duo = [
-        f"Quedate con nosotros, compartiendo la mejor música. En {NOMBRE_EMISORA}, seguimos con vos.",
-        f"La mejor compañía para tu día está acá. En {NOMBRE_EMISORA}, seguí conectado.",
-        f"Música, fe y buena compañía a cada hora. En {NOMBRE_EMISORA}, estamos siempre con vos.",
-        f"No te muevas del dial, que sigue sonando la mejor música. {NOMBRE_EMISORA}, siempre junto a vos.",
+        f"Seguimos compartiendo alabanzas y una palabra de fe para tu corazón. En {NOMBRE_EMISORA}, Dios te bendiga.",
+        f"Que la gracia y la paz de Cristo te acompañen a donde vayas. En {NOMBRE_EMISORA}, seguimos con vos.",
+        f"Llevando esperanza, fe y música que edifica tu vida las veinticuatro horas. En {NOMBRE_EMISORA}, seguí conectado.",
+        f"Declaramos bendición, paz y victoria sobre tu hogar y tu familia. Esto es {NOMBRE_EMISORA}, siempre con vos.",
+        f"No estás solo, Jesús camina con vos y nosotros te acompañamos en el dial. En {NOMBRE_EMISORA}, seguí conectado.",
+        f"Adoración, buenas noticias y la presencia de Dios en cada canción. Quedate en {NOMBRE_EMISORA}, seguimos con vos.",
+        f"Que el Señor abra puertas de bendición en todo lo que emprendas hoy. Desde {NOMBRE_EMISORA}, Dios te bendiga.",
+        f"Uniendo corazones en fe y adoración a cada hora del día. En la sintonía de {NOMBRE_EMISORA}, estamos con vos.",
+        f"Porque en Dios siempre hay esperanza y un nuevo comienzo para tu vida. En {NOMBRE_EMISORA}, seguí conectado.",
+        f"Gracias por ser parte de esta gran familia de fe. Seguimos alabando juntos en {NOMBRE_EMISORA}, siempre junto a vos.",
     ]
     texto_voz_2 = random.choice(frases_cierre_duo)
 
     if not data or "current" not in data:
-        texto_voz_1 = f"{saludo}. En el país son las {hora_str}. Actualizamos la hora en {NOMBRE_EMISORA}."
+        texto_voz_1 = f"{saludo}. En el país son las {hora_str}. Actualizamos la hora en la sintonía de {NOMBRE_EMISORA}."
         return texto_voz_1, texto_voz_2
 
     actual = data["current"]
@@ -162,9 +183,10 @@ def armar_dialogo_spot(data: dict | None) -> tuple[str, str]:
     descripcion = CODIGOS_CLIMA.get(actual["weather_code"], "condiciones variables")
 
     plantillas_voz_1 = [
-        f"{saludo}. En Argentina son las {hora_str}. Así está el tiempo en {CIUDAD}: tenemos {descripcion}, {temp} grados de temperatura y una térmica de {sensacion}. La humedad, del {humedad} por ciento.",
-        f"{saludo}. Pasaron las {hora_str} en todo el país. Actualizamos el clima en {CIUDAD}: cielo con {descripcion}, {temp} grados la temperatura actual y {sensacion} de sensación térmica. Vientos de {viento} kilómetros por hora.",
-        f"{saludo}. Son las {hora_str}. Te contamos cómo está el tiempo ahora en {CIUDAD}: {descripcion}, con {temp} grados, sensación térmica de {sensacion} grados y humedad del {humedad} por ciento.",
+        f"{saludo}. En Argentina son las {hora_str}. Así está el tiempo ahora en {CIUDAD}: tenemos {descripcion}, {temp} grados de temperatura y una térmica de {sensacion}. La humedad, del {humedad} por ciento.",
+        f"{saludo}. Pasaron las {hora_str} en todo el país. Actualizamos los datos del clima para {CIUDAD}: cielo con {descripcion}, {temp} grados la temperatura actual y {sensacion} de sensación térmica. Vientos de {viento} kilómetros por hora.",
+        f"{saludo}. Son las {hora_str}. Te contamos cómo está el tiempo en {CIUDAD}: {descripcion}, con {temp} grados de temperatura, sensación térmica de {sensacion} grados y humedad del {humedad} por ciento.",
+        f"{saludo}. Cuando pasan las {hora_str} en Argentina, repasamos el clima en {CIUDAD}: tenemos {descripcion}, temperatura de {temp} grados y una sensación térmica de {sensacion}. Humedad del {humedad} por ciento.",
     ]
     return random.choice(plantillas_voz_1), texto_voz_2
 
@@ -295,7 +317,6 @@ def _comprimir(x: np.ndarray, thr_db: float = -20.0, ratio: float = 3.0,
 
 
 def _recortar_silencio(x: np.ndarray, umbral: float = 0.015) -> np.ndarray:
-    """Elimina los silencios muertos al inicio y al final de la locución para edición ajustada de spot."""
     env = np.abs(x).max(axis=1)
     activos = np.where(env > umbral)[0]
     if len(activos) == 0:
@@ -308,30 +329,23 @@ def _recortar_silencio(x: np.ndarray, umbral: float = 0.015) -> np.ndarray:
 
 
 def aplicar_fx_final_voz(x: np.ndarray, permitir_glitch: bool = True) -> tuple[np.ndarray, str]:
-    """
-    Aplica efectos de radio FM a la última palabra/frase del locutor de forma aleatoria
-    para que algunos spots salgan con Eco Ping-Pong, otros con Glitch + Eco, otros con Filtro Radio y otros limpios.
-    """
     opciones = ["eco_espacial", "eco_espacial", "glitch_eco", "radio_filter", "limpio"]
     if not permitir_glitch:
         opciones = ["eco_espacial", "eco_espacial", "limpio"]
     modo_fx = random.choice(opciones)
 
     if modo_fx == "limpio":
-        # Solo extiende un poquito de aire natural
         cola_vacia = np.zeros((int(SR * 0.15), 2))
         return np.vstack((x, cola_vacia)), "Limpio Natural"
 
-    # Tomamos los últimos 420ms de la voz (la última palabra pronunciada)
     ventana = min(int(SR * 0.42), len(x) // 2)
     trozo_final = _fade(x[-ventana:].copy(), 25, 25)
     trozo_filtrado = _filtrar(trozo_final, pasa_altos=380, pasa_bajos=3200)
 
     if modo_fx == "eco_espacial":
-        # Throw Delay Ping-Pong: la última palabra rebota 4 veces (Izquierda -> Derecha -> Izquierda -> Derecha)
         extra_ms = 1150
         out = np.pad(x, ((0, int(SR * extra_ms / 1000)), (0, 0)))
-        paso_eco = int(SR * 0.25)  # Rebote cada 250ms
+        paso_eco = int(SR * 0.25)
         inicio_eco = len(x) - int(SR * 0.12)
 
         for rep in range(1, 5):
@@ -340,17 +354,15 @@ def aplicar_fx_final_voz(x: np.ndarray, permitir_glitch: bool = True) -> tuple[n
             fin = min(len(out), pos + len(trozo_filtrado))
             largo = fin - pos
             if largo > 0:
-                canal = rep % 2  # Alterna L / R
+                canal = rep % 2
                 out[pos:fin, canal] += trozo_filtrado[:largo, canal] * gan * 0.95
                 out[pos:fin, 1 - canal] += trozo_filtrado[:largo, 1 - canal] * gan * 0.30
         return out, "Eco Ping-Pong FM"
 
     elif modo_fx == "glitch_eco":
-        # Efecto Stutter FM ("co-co-conectado") en la parte final + Eco estéreo al terminar
         stutter_len = min(int(SR * 0.11), len(x) // 4)
         silaba = _fade(x[-ventana : -ventana + stutter_len].copy(), 8, 8)
         silaba_eq = _filtrar(silaba, pasa_altos=450, pasa_bajos=4000) * 0.85
-        # Paneamos las 2 repeticiones rápidas L y R antes del final
         s_l = np.column_stack((silaba_eq[:, 0], silaba_eq[:, 1] * 0.25))
         s_r = np.column_stack((silaba_eq[:, 0] * 0.25, silaba_eq[:, 1]))
 
@@ -358,7 +370,6 @@ def aplicar_fx_final_voz(x: np.ndarray, permitir_glitch: bool = True) -> tuple[n
         remate = x[-ventana:]
         ensamble = np.vstack((cuerpo_previo, s_l, s_r, remate))
 
-        # Y le agregamos 3 ecos suaves a la cola final
         out = np.pad(ensamble, ((0, int(SR * 0.90)), (0, 0)))
         paso_eco = int(SR * 0.24)
         ini_eco = len(ensamble) - int(SR * 0.10)
@@ -372,7 +383,6 @@ def aplicar_fx_final_voz(x: np.ndarray, permitir_glitch: bool = True) -> tuple[n
         return out, "Glitch Stutter + Eco FM"
 
     else:
-        # "radio_filter": Los últimos 550ms toman un toque de filtro telefónico/megáfono FM + eco corto
         v_meg = min(int(SR * 0.55), len(x) // 2)
         out = x.copy()
         tramo_radio = _filtrar(out[-v_meg:], pasa_altos=550, pasa_bajos=2600)
@@ -770,17 +780,12 @@ def sintetizar_voz(texto: str, es_mujer: bool) -> np.ndarray:
 
 
 def procesar_voz(x: np.ndarray) -> np.ndarray:
-    """
-    Procesamiento natural de micrófono condensador de estudio FM:
-    Quita el sonido metálico de TTS, suma calidez de pecho, aire suave y Room Reverb corta de cabina.
-    """
     x = _filtrar(x, pasa_altos=80)
     calidez = _filtrar(x, pasa_altos=105, pasa_bajos=240)
     presencia = _filtrar(x, pasa_altos=2400, pasa_bajos=5400)
     aire = np.tanh(_filtrar(x, pasa_altos=6800) * 1.8) * 0.08
     x = x + 0.24 * calidez + 0.22 * presencia + aire
 
-    # Micro-Doubler muy sutil + Ambiente de cabina de locución (0.35s) para sonar orgánico
     d_l = int(SR * 0.012)
     d_r = int(SR * 0.017)
     doble = np.zeros_like(x)
@@ -801,7 +806,6 @@ def generar_spot(texto_voz_1: str, texto_voz_2: str, estado_clima: str, path_sal
     voz_1_cruda = procesar_voz(sintetizar_voz(texto_voz_1, abre_mujer))
     voz_2_cruda = procesar_voz(sintetizar_voz(texto_voz_2, not abre_mujer))
 
-    # Aplicamos el efecto variable al final de cada intervención (a veces eco, a veces glitch+eco, a veces limpio)
     voz_1, fx_1_nombre = aplicar_fx_final_voz(voz_1_cruda, permitir_glitch=False)
     voz_2, fx_2_nombre = aplicar_fx_final_voz(voz_2_cruda, permitir_glitch=True)
     print(f"FX final Locutor 1: [{fx_1_nombre}] | FX final Locutor 2: [{fx_2_nombre}]")
@@ -810,7 +814,6 @@ def generar_spot(texto_voz_1: str, texto_voz_2: str, estado_clima: str, path_sal
     trans = _pico(sintetizar_transicion(momento), 0.94)
     cierre = _pico(sintetizar_cierre(momento), 0.94)
 
-    # Tiempos de edición tipo Spot FM (pisando las colas de los ecos)
     inicio_v1 = 1420.0
     fin_v1_seco = inicio_v1 + _dur_ms(voz_1_cruda)
 
@@ -821,12 +824,10 @@ def generar_spot(texto_voz_1: str, texto_voz_2: str, estado_clima: str, path_sal
     inicio_cierre = fin_v2_seco - 100.0
     total_ms = max(inicio_cierre + _dur_ms(cierre), inicio_v2 + _dur_ms(voz_2) + 300.0)
 
-    # 1. Bus de Voces (con sus colas de eco/glitch sonando sobre los separadores)
     bus_voces = _pista(total_ms + 500)
     _sumar(bus_voces, voz_1, inicio_v1, 1.0)
     _sumar(bus_voces, voz_2, inicio_v2, 1.0)
 
-    # 2. Bus de Canción de Fondo + Clima
     dur_cancion = total_ms - 500.0
     cancion_fondo = _fade(_rms(bed_redimidos_dinamico(momento, estado_clima, dur_cancion), REFERENCIA_RMS_DB), 300, 900)
 
@@ -840,13 +841,11 @@ def generar_spot(texto_voz_1: str, texto_voz_2: str, estado_clima: str, path_sal
 
     bus_cortina = _ducking_por_voz(bus_cortina, bus_voces, reduccion_db=-3.8)
 
-    # 3. Bus de Sweepers FM
     bus_fx = _pista(total_ms + 500)
     _sumar(bus_fx, intro, 0.0, _g(EFECTOS_DB))
     _sumar(bus_fx, trans, inicio_trans, _g(EFECTOS_DB))
     _sumar(bus_fx, cierre, inicio_cierre, _g(EFECTOS_DB))
 
-    # 4. Masterización Multibanda FM
     master = (bus_voces + bus_cortina + bus_fx)[: int(SR * total_ms / 1000)]
     master = _filtrar(master, pasa_altos=35)
 
@@ -864,7 +863,7 @@ def generar_spot(texto_voz_1: str, texto_voz_2: str, estado_clima: str, path_sal
     final = _pico(np.tanh(master * 1.15), 0.95)
 
     array_a_seg(final).export(path_salida, format="mp3", bitrate="192k")
-    print(f"¡Spot Dúo Redimidos con Vocal FX ({len(final) / SR:.1f} s) guardado en {path_salida}!")
+    print(f"¡Spot Cristiano Dúo Redimidos ({len(final) / SR:.1f} s) guardado en {path_salida}!")
 
 
 # ---------------------------------------------------------------------------
@@ -887,7 +886,7 @@ def subir_sftp(local_path: str, host: str, port: int, user: str, password: str, 
 
 
 def main():
-    print(f"=== GENERANDO SPOT DUO FM + VOCAL FX PARA: {NOMBRE_EMISORA} ===")
+    print(f"=== GENERANDO SPOT CRISTIANO DUO FM + VOCAL FX PARA: {NOMBRE_EMISORA} ===")
     sftp_host = os.environ.get("SFTP_HOST", "").strip()
     sftp_port = int(os.environ.get("SFTP_PORT") or "2022")
     sftp_user = os.environ.get("SFTP_USER", "").strip()
