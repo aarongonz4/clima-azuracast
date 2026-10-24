@@ -7,7 +7,7 @@ jobs:
   actualizar-clima:
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: false
+      fail-fast: false   # si falla una emisora, la otra igual se actualiza
       matrix:
         include:
           - id: NOGARADIO
@@ -31,13 +31,15 @@ jobs:
       - name: Instalar dependencias
         run: pip install -r requirements.txt
 
+      # Nogaradio usa los secrets viejos (SFTP_HOST, SFTP_PORT, ...) si no existen los de _NOGARADIO.
+      # Redimidos usa solo los suyos (_REDIMIDOS), así nunca sube al servidor equivocado.
       - name: Ejecutar script de clima (${{ matrix.nombre }})
         env:
           NOMBRE_EMISORA: ${{ matrix.nombre }}
           VELOCIDAD_VOZ: "+5%"
-          SFTP_HOST: ${{ secrets[format('SFTP_HOST_{0}', matrix.id)] }}
-          SFTP_PORT: ${{ secrets[format('SFTP_PORT_{0}', matrix.id)] }}
-          SFTP_USER: ${{ secrets[format('SFTP_USER_{0}', matrix.id)] }}
-          SFTP_PASS: ${{ secrets[format('SFTP_PASS_{0}', matrix.id)] }}
-          SFTP_REMOTE_DIR: ${{ secrets[format('SFTP_REMOTE_DIR_{0}', matrix.id)] }}
+          SFTP_HOST: ${{ secrets[format('SFTP_HOST_{0}', matrix.id)] || (matrix.id == 'NOGARADIO' && secrets.SFTP_HOST) || '' }}
+          SFTP_PORT: ${{ secrets[format('SFTP_PORT_{0}', matrix.id)] || (matrix.id == 'NOGARADIO' && secrets.SFTP_PORT) || '' }}
+          SFTP_USER: ${{ secrets[format('SFTP_USER_{0}', matrix.id)] || (matrix.id == 'NOGARADIO' && secrets.SFTP_USER) || '' }}
+          SFTP_PASS: ${{ secrets[format('SFTP_PASS_{0}', matrix.id)] || (matrix.id == 'NOGARADIO' && secrets.SFTP_PASS) || '' }}
+          SFTP_REMOTE_DIR: ${{ secrets[format('SFTP_REMOTE_DIR_{0}', matrix.id)] || (matrix.id == 'NOGARADIO' && secrets.SFTP_REMOTE_DIR) || '' }}
         run: python run_emisora.py
