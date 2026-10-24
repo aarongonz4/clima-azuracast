@@ -7,16 +7,18 @@ jobs:
   actualizar-clima:
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: false   # si falla una emisora, la otra igual se actualiza
+      fail-fast: false
       matrix:
         include:
           - id: NOGARADIO
             nombre: "Nogaradio"
-            motor: "google"      # voces de Google Cloud (es-US Neural2)
+            motor: "google"
+            script: "clima_azuracast.py"
           - id: REDIMIDOS
             nombre: "Radio Redimidos por Jesús"
-            motor: "edge"        # voces de Microsoft Edge (es-AR Elena y Tomás), gratis
-            solo_clima: "1"      # sin noticias: solo clima y "seguimos escuchando..."
+            motor: "edge"
+            solo_clima: "1"
+            script: "run_emisora.py"
     steps:
       - name: Clonar repo
         uses: actions/checkout@v4
@@ -40,8 +42,6 @@ jobs:
           GCP_JSON: ${{ secrets.GCP_CREDENTIALS }}
         run: echo "$GCP_JSON" > google_credentials.json
 
-      # Nogaradio usa los secrets viejos (SFTP_HOST, SFTP_PORT, ...) si no existen los de _NOGARADIO.
-      # Redimidos usa solo los suyos (_REDIMIDOS), así nunca sube al servidor equivocado.
       - name: Ejecutar script de clima (${{ matrix.nombre }})
         env:
           MOTOR_VOZ: ${{ matrix.motor }}
@@ -54,4 +54,4 @@ jobs:
           SFTP_USER: ${{ secrets[format('SFTP_USER_{0}', matrix.id)] || (matrix.id == 'NOGARADIO' && secrets.SFTP_USER) || '' }}
           SFTP_PASS: ${{ secrets[format('SFTP_PASS_{0}', matrix.id)] || (matrix.id == 'NOGARADIO' && secrets.SFTP_PASS) || '' }}
           SFTP_REMOTE_DIR: ${{ secrets[format('SFTP_REMOTE_DIR_{0}', matrix.id)] || (matrix.id == 'NOGARADIO' && secrets.SFTP_REMOTE_DIR) || '' }}
-        run: python run_emisora.py
+        run: python ${{ matrix.script }}
