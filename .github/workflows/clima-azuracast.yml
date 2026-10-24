@@ -6,6 +6,14 @@ on:
 jobs:
   actualizar-clima:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: NOGARADIO
+            nombre: "Nogaradio"
+          - id: REDIMIDOS
+            nombre: "Radio Redimidos por Jesús"
     steps:
       - name: Clonar repo
         uses: actions/checkout@v4
@@ -23,17 +31,13 @@ jobs:
       - name: Instalar dependencias
         run: pip install -r requirements.txt
 
-      - name: Crear archivo de credenciales de Google
+      - name: Ejecutar script de clima (${{ matrix.nombre }})
         env:
-          GCP_JSON: ${{ secrets.GCP_CREDENTIALS }}
-        run: echo "$GCP_JSON" > google_credentials.json
-
-      - name: Ejecutar script de clima
-        env:
-          GOOGLE_APPLICATION_CREDENTIALS: google_credentials.json
-          SFTP_HOST: ${{ secrets.SFTP_HOST }}
-          SFTP_PORT: ${{ secrets.SFTP_PORT }}
-          SFTP_USER: ${{ secrets.SFTP_USER }}
-          SFTP_PASS: ${{ secrets.SFTP_PASS }}
-          SFTP_REMOTE_DIR: ${{ secrets.SFTP_REMOTE_DIR }}
-        run: python clima_azuracast.py
+          NOMBRE_EMISORA: ${{ matrix.nombre }}
+          VELOCIDAD_VOZ: "+5%"
+          SFTP_HOST: ${{ secrets[format('SFTP_HOST_{0}', matrix.id)] }}
+          SFTP_PORT: ${{ secrets[format('SFTP_PORT_{0}', matrix.id)] }}
+          SFTP_USER: ${{ secrets[format('SFTP_USER_{0}', matrix.id)] }}
+          SFTP_PASS: ${{ secrets[format('SFTP_PASS_{0}', matrix.id)] }}
+          SFTP_REMOTE_DIR: ${{ secrets[format('SFTP_REMOTE_DIR_{0}', matrix.id)] }}
+        run: python run_emisora.py
