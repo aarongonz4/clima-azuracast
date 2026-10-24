@@ -2,5 +2,6 @@ requests
 paramiko
 feedparser
 edge-tts
+google-cloud-texttospeech
 pydub
 numpy
