@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """
-Spot automático exclusivo para Radio Redimidos por Jesús (run_emisora.py).
-Estilo de audio: Inspiracional, Cálido y Armónico (Piano Rhodes, Pad Celestial, Chimes suaves y Percusión Acústica ligera).
-Voces: Microsoft Edge TTS (es-AR Elena y Tomás) turnándose por hora.
+Spot automático exclusivo para Radio Redimidos por Jesús (run_emisora.py) - Edición Dúo FM Dinámico.
+
+Qué hace esta versión:
+  - Dúo de voces en cada spot (Elena y Tomás combinados): Uno da la hora/clima -> Transición FM -> El otro hace el cierre institucional.
+  - Rotación horaria: En horas pares abre Mujer y cierra Hombre; en impares abre Hombre y cierra Mujer.
+  - Música y efectos variables según la HORA (Mañana luminosa, Tarde rítmica, Noche profunda) + CLIMA (Lluvia, Tormenta, Viento o Despejado).
+  - Canción instrumental de fondo más presente con Sidechain Ducking suave.
 """
 
 import asyncio
@@ -26,7 +30,7 @@ from pydub import AudioSegment
 # ---------------------------------------------------------------------------
 
 NOMBRE_EMISORA = os.environ.get("NOMBRE_EMISORA", "Radio Redimidos por Jesús").strip()
-VELOCIDAD_VOZ = os.environ.get("VELOCIDAD_VOZ", "+4%").strip()
+VELOCIDAD_VOZ = os.environ.get("VELOCIDAD_VOZ", "+5%").strip()
 
 CIUDAD = "Resistencia"
 LAT = -27.4514
@@ -40,9 +44,11 @@ ASSETS_DIR = "assets"
 EXTENSIONES = (".mp3", ".wav", ".ogg", ".m4a", ".flac")
 SR = 44100
 
-REFERENCIA_RMS_DB = -19.0
-EFECTOS_DB = -3.0
-AMBIENTE_DB = -10.5
+# Niveles de mezcla en dB (Canción de fondo y efectos más presentes)
+REFERENCIA_RMS_DB = -18.5
+EFECTOS_DB = -2.0          # Intro, Transición FM y Cierre bien claros
+AMBIENTE_DB = -8.0         # Canción de fondo + efectos del clima bien audibles
+CAMA_EXTERNA_DB = -8.5     # Por si algún día subís un assets/cama.mp3
 
 # ---------------------------------------------------------------------------
 # Diccionarios y Funciones de Tiempo
@@ -88,16 +94,25 @@ def hora_en_espanol(hora: int, minuto: int) -> str:
     return f"{texto_hora} con {NUMEROS[minuto]} minutos"
 
 
-def saludo_segun_hora(hora_actual: int) -> str:
+def momento_del_dia(hora_actual: int) -> str:
     if 6 <= hora_actual < 12:
-        return random.choice(["Buenos días, bendiciones", "Muy buenos días", "Hola, excelente mañana"])
+        return "manana"
     elif 12 <= hora_actual < 20:
-        return random.choice(["Buenas tardes, bendiciones", "Muy buenas tardes", "Hola, excelente tarde"])
-    return random.choice(["Buenas noches, bendiciones", "Muy buenas noches", "Excelente noche para todos"])
+        return "tarde"
+    return "noche"
+
+
+def saludo_segun_hora(hora_actual: int) -> str:
+    momento = momento_del_dia(hora_actual)
+    if momento == "manana":
+        return random.choice(["Buenos días, qué lindo acompañarte", "Muy buenos días, bendiciones", "Hola, excelente mañana para vos"])
+    elif momento == "tarde":
+        return random.choice(["Buenas tardes, qué bueno estar con vos", "Muy buenas tardes, bendiciones", "Hola, excelente tarde"])
+    return random.choice(["Buenas noches, gracias por tu compañía", "Muy buenas noches, bendiciones", "Excelente noche para vos"])
 
 
 # ---------------------------------------------------------------------------
-# Clima
+# Textos a Dos Voces (Voz 1: Hora y Clima | Voz 2: Frase Institucional FM)
 # ---------------------------------------------------------------------------
 
 def obtener_clima(reintentos: int = 3, espera: int = 5) -> dict | None:
@@ -119,13 +134,24 @@ def obtener_clima(reintentos: int = 3, espera: int = 5) -> dict | None:
     return None
 
 
-def armar_texto_clima(data: dict | None) -> str:
+def armar_dialogo_spot(data: dict | None) -> tuple[str, str]:
+    """Devuelve (texto_voz_1, texto_voz_2) para que hablen intercalados con transición en el medio."""
     ahora = datetime.now(ZONA_HORARIA)
     hora_str = hora_en_espanol(ahora.hour, ahora.minute)
     saludo = saludo_segun_hora(ahora.hour)
 
+    # Frases para el segundo locutor (después del efecto de transición FM)
+    frases_cierre_duo = [
+        f"Seguí conectado a {NOMBRE_EMISORA}. Seguimos con vos, compartiendo la mejor música y una palabra de bendición para tu vida.",
+        f"Seguimos con vos en cada momento. Quedate en la sintonía de {NOMBRE_EMISORA}, donde la buena música te acompaña siempre.",
+        f"No te muevas de ahí, seguí conectado con nosotros. En {NOMBRE_EMISORA} tenemos mucho más para compartir con vos.",
+        f"Cada hora junto a vos. Seguimos conectados en la sintonía de {NOMBRE_EMISORA}, acompañando tu día con la mejor programación.",
+    ]
+    texto_voz_2 = random.choice(frases_cierre_duo)
+
     if not data or "current" not in data:
-        return f"{saludo}. En Argentina son las {hora_str}. Seguimos en la sintonía de {NOMBRE_EMISORA}, acompañándote en cada momento."
+        texto_voz_1 = f"{saludo}. En Argentina pasaron las {hora_str}. Así te actualizamos la hora en la sintonía de {NOMBRE_EMISORA}."
+        return texto_voz_1, texto_voz_2
 
     actual = data["current"]
     temp = round(actual["temperature_2m"])
@@ -134,22 +160,28 @@ def armar_texto_clima(data: dict | None) -> str:
     viento = round(actual["wind_speed_10m"])
     descripcion = CODIGOS_CLIMA.get(actual["weather_code"], "condiciones variables")
 
-    plantillas = [
-        f"{saludo}. En Argentina son las {hora_str}. {NOMBRE_EMISORA} te informa los datos del tiempo en {CIUDAD}: tenemos {descripcion}, con {temp} grados de temperatura y una sensación térmica de {sensacion} grados. Humedad del {humedad} por ciento. Seguimos acompañándote con la mejor música en {NOMBRE_EMISORA}.",
-        f"{saludo}. Pasaron las {hora_str} en todo el país. Compartimos el estado del tiempo para {CIUDAD}: cielo con {descripcion}, {temp} grados de temperatura y {sensacion} de sensación térmica. La humedad es del {humedad} por ciento y vientos de {viento} kilómetros por hora. Quedate en la compañía de {NOMBRE_EMISORA}.",
+    plantillas_voz_1 = [
+        f"{saludo}. En Argentina son las {hora_str}. Actualizamos el estado del tiempo en {CIUDAD}: tenemos {descripcion}, con {temp} grados de temperatura y una sensación térmica de {sensacion} grados. La humedad es del {humedad} por ciento.",
+        f"{saludo}. Pasaron las {hora_str} en todo el país. Así está el clima ahora en {CIUDAD}: cielo con {descripcion}, temperatura actual de {temp} grados y térmica de {sensacion}. Humedad del {humedad} por ciento y vientos de {viento} kilómetros por hora.",
+        f"{saludo}. Son las {hora_str} en la República Argentina. Te contamos cómo está el tiempo en {CIUDAD}: {descripcion}, {temp} grados de temperatura, sensación térmica de {sensacion} grados y una humedad del {humedad} por ciento.",
     ]
-    return random.choice(plantillas)
+    return random.choice(plantillas_voz_1), texto_voz_2
 
 
-def elegir_ambiente(data: dict | None) -> str:
-    hora = datetime.now(ZONA_HORARIA).hour
-    es_dia = 6 <= hora < 20
+def analizar_estado_clima(data: dict | None) -> str:
     if not data or "current" not in data:
-        return "dia" if es_dia else "noche"
-    codigo = data["current"].get("weather_code", 0)
-    if codigo in (95, 96, 99, 51, 53, 55, 61, 63, 65, 80, 81, 82):
+        return "despejado"
+    actual = data["current"]
+    codigo = actual.get("weather_code", 0)
+    viento = actual.get("wind_speed_10m", 0)
+
+    if codigo in (95, 96, 99):
+        return "tormenta"
+    if codigo in (51, 53, 55, 61, 63, 65, 80, 81, 82):
         return "lluvia"
-    return "dia" if es_dia else "noche"
+    if codigo in (3, 45, 48, 71, 73, 75) or (viento and viento >= 25):
+        return "viento"
+    return "despejado"
 
 
 # ---------------------------------------------------------------------------
@@ -261,7 +293,8 @@ def _comprimir(x: np.ndarray, thr_db: float = -20.0, ratio: float = 3.0,
     return x * ganancia[:, None]
 
 
-def _ducking_por_voz(fondo: np.ndarray, pista_voz: np.ndarray, reduccion_db: float = -5.0) -> np.ndarray:
+def _ducking_por_voz(fondo: np.ndarray, pista_voz: np.ndarray, reduccion_db: float = -3.8) -> np.ndarray:
+    """Baja apenas la canción cuando hablan (-3.8 dB) y la sube al frente en las pausas y transiciones."""
     n = min(len(fondo), len(pista_voz))
     blk = int(SR * 0.015)
     nb = n // blk + 1
@@ -269,7 +302,7 @@ def _ducking_por_voz(fondo: np.ndarray, pista_voz: np.ndarray, reduccion_db: flo
     hablando = (env > 0.04).astype(np.float64)
 
     a = np.exp(-15.0 / 30.0)
-    r = np.exp(-15.0 / 280.0)
+    r = np.exp(-15.0 / 240.0)
     suave = np.zeros(nb)
     val = 0.0
     for i in range(nb):
@@ -282,11 +315,11 @@ def _ducking_por_voz(fondo: np.ndarray, pista_voz: np.ndarray, reduccion_db: flo
     return fondo * _g_array(curva_db)[:, None]
 
 
-def _stereo_delay(x: np.ndarray, delay_l_ms: float = 280.0, delay_r_ms: float = 420.0, feedback: float = 0.35, mezcla: float = 0.30) -> np.ndarray:
+def _stereo_delay(x: np.ndarray, delay_l_ms: float = 260.0, delay_r_ms: float = 390.0, feedback: float = 0.35, mezcla: float = 0.32) -> np.ndarray:
     out = x.copy()
     dl = int(SR * delay_l_ms / 1000)
     dr = int(SR * delay_r_ms / 1000)
-    eco = _filtrar(x, pasa_altos=220, pasa_bajos=3500)
+    eco = _filtrar(x, pasa_altos=240, pasa_bajos=3800)
     for rep in range(1, 4):
         gan = (feedback ** rep) * mezcla
         desp_l = rep * dl
@@ -298,13 +331,13 @@ def _stereo_delay(x: np.ndarray, delay_l_ms: float = 280.0, delay_r_ms: float = 
     return out
 
 
-def _reverb_estereo(x: np.ndarray, seg: float = 1.5, mezcla: float = 0.36, brillo: float = 4500.0) -> np.ndarray:
+def _reverb_estereo(x: np.ndarray, seg: float = 1.4, mezcla: float = 0.34, brillo: float = 4800.0) -> np.ndarray:
     ir_n = int(SR * seg)
     t = np.arange(ir_n) / SR
     rng = np.random.default_rng(55)
-    ir = rng.standard_normal((ir_n, 2)) * np.exp(-5.5 * t / seg)[:, None]
+    ir = rng.standard_normal((ir_n, 2)) * np.exp(-5.8 * t / seg)[:, None]
     ir = _filtrar(ir, pasa_altos=180, pasa_bajos=brillo)
-    predelay = int(SR * 0.024)
+    predelay = int(SR * 0.022)
     ir = np.pad(ir, ((predelay, 0), (0, 0)))[:ir_n]
     ir /= (np.sqrt(np.sum(ir ** 2, axis=0, keepdims=True)) + 1e-9)
 
@@ -316,178 +349,348 @@ def _reverb_estereo(x: np.ndarray, seg: float = 1.5, mezcla: float = 0.36, brill
 
 
 # ---------------------------------------------------------------------------
-# Instrumentos Estilo Inspiracional / Cálido (Redimidos)
+# Instrumentos y Efectos Radio FM (Cálidos pero con punch radial)
 # ---------------------------------------------------------------------------
 
 def _piano_calido(freqs: list[float], dur_ms: float, decay: float = 2.0) -> np.ndarray:
-    """Acorde de Piano Eléctrico / Acústico cálido con armónicos suaves."""
     t = _t(dur_ms)
     out = np.zeros((len(t), 2))
-    ataque = min(int(SR * 0.010), len(t))
+    ataque = min(int(SR * 0.008), len(t))
     for i, f in enumerate(freqs):
-        martillo = 0.20 * np.sin(2 * np.pi * f * 3.0 * t) * np.exp(-t * 16.0)
-        onda_l = np.sin(2 * np.pi * f * t + martillo) + 0.18 * np.sin(2 * np.pi * f * 2.0 * t)
-        onda_r = np.sin(2 * np.pi * (f * 1.0012) * t + martillo) + 0.18 * np.sin(2 * np.pi * (f * 2.002) * t)
+        martillo = 0.25 * np.sin(2 * np.pi * f * 3.0 * t) * np.exp(-t * 16.0)
+        onda_l = np.sin(2 * np.pi * f * t + martillo) + 0.20 * np.sin(2 * np.pi * f * 2.0 * t)
+        onda_r = np.sin(2 * np.pi * (f * 1.0015) * t + martillo) + 0.20 * np.sin(2 * np.pi * (f * 2.003) * t)
         env = np.exp(-decay * t)
         env[:ataque] *= np.linspace(0, 1, ataque)
-        pan = 0.3 + 0.4 * (i / max(1, len(freqs) - 1))
+        pan = 0.25 + 0.5 * (i / max(1, len(freqs) - 1))
         out[:, 0] += onda_l * env * pan
         out[:, 1] += onda_r * env * (1.0 - pan)
-    return _filtrar(out, pasa_altos=95, pasa_bajos=3400) * 0.32
+    return _filtrar(out, pasa_altos=95, pasa_bajos=3800) * 0.34
 
 
-def _bell_chime(freq: float, dur_ms: float = 900, pan: float = 0.5) -> np.ndarray:
-    """Campana cristalina suave estilo Worship / Inspiracional."""
+def _bell_chime(freq: float, dur_ms: float = 800, pan: float = 0.5) -> np.ndarray:
     t = _t(dur_ms)
-    mod = 1.6 * np.exp(-t * 12.0) * np.sin(2 * np.pi * (freq * 3.0) * t)
-    onda = np.sin(2 * np.pi * freq * t + mod) + 0.25 * np.sin(2 * np.pi * (freq * 2.0) * t)
-    env = np.exp(-t * 3.2)
-    ataque = min(int(SR * 0.005), len(t))
+    mod = 2.0 * np.exp(-t * 14.0) * np.sin(2 * np.pi * (freq * 2.0) * t)
+    onda = np.sin(2 * np.pi * freq * t + mod) + 0.30 * np.sin(2 * np.pi * (freq * 3.0) * t) * np.exp(-t * 8.0)
+    env = np.exp(-t * 3.5)
+    ataque = min(int(SR * 0.004), len(t))
     env[:ataque] *= np.linspace(0, 1, ataque)
-    mono = onda * env * 0.28
+    mono = onda * env * 0.32
     return np.column_stack((mono * pan, mono * (1.0 - pan)))
 
 
-def _pad_celestial(freqs: list[float], dur_ms: float) -> np.ndarray:
-    """Colchón ambiental envolvente y sereno."""
+def _pad_celestial(freqs: list[float], dur_ms: float, corte_lp: float = 1500.0) -> np.ndarray:
     t = _t(dur_ms)
     out = np.zeros((len(t), 2))
-    rng = np.random.default_rng(7)
+    rng = np.random.default_rng(19)
     for f in freqs:
-        for det, pl, pr in [(-0.006, 0.8, 0.2), (0.0, 0.5, 0.5), (0.006, 0.2, 0.8)]:
+        for det, pl, pr in [(-0.007, 0.85, 0.15), (0.0, 0.5, 0.5), (0.007, 0.15, 0.85)]:
             fa = f * (1.0 + det)
             fase = rng.uniform(0, 1)
             saw = 2.0 * ((t * fa + fase) % 1.0) - 1.0
             out[:, 0] += saw * pl
             out[:, 1] += saw * pr
-    out = _filtrar(out, pasa_altos=90, pasa_bajos=1250)
-    return _fade(out * 0.14, 400, 500)
+    out = _filtrar(out, pasa_altos=90, pasa_bajos=corte_lp)
+    return _fade(out * 0.16, 300, 400)
 
 
-def _bajo_acustico(freq: float, dur_ms: float) -> np.ndarray:
+def _bajo_fm(freq: float, dur_ms: float) -> np.ndarray:
     t = _t(dur_ms)
-    onda = np.tanh((np.sin(2 * np.pi * freq * t) + 0.25 * np.sin(2 * np.pi * freq * 2.0 * t)) * 1.3)
-    env = np.exp(-2.8 * t)
-    ataque = min(int(SR * 0.012), len(t))
+    onda = np.tanh((np.sin(2 * np.pi * freq * t) + 0.35 * np.sin(2 * np.pi * freq * 2.0 * t)) * 1.5)
+    env = np.exp(-3.2 * t)
+    ataque = min(int(SR * 0.008), len(t))
     env[:ataque] *= np.linspace(0, 1, ataque)
-    return _est(_filtrar(_est(onda * env), pasa_bajos=200)[:, 0] * 0.40)
+    return _est(_filtrar(_est(onda * env), pasa_bajos=230)[:, 0] * 0.44)
 
 
-def _bombo_suave(dur_ms: float = 280) -> np.ndarray:
+def _bombo_radio(dur_ms: float = 260) -> np.ndarray:
     t = _t(dur_ms)
-    f_env = 44.0 + 90.0 * np.exp(-t * 30.0)
+    f_env = 46.0 + 110.0 * np.exp(-t * 35.0)
     fase = 2 * np.pi * np.cumsum(f_env) / SR
-    cuerpo = np.tanh(np.sin(fase) * 1.4) * np.exp(-t * 9.5)
-    return _est(cuerpo * 0.65)
+    cuerpo = np.tanh(np.sin(fase) * 1.6) * np.exp(-t * 10.0)
+    click = _filtrar(np.random.uniform(-1, 1, (len(t), 2)), pasa_altos=900, pasa_bajos=3800)
+    click *= np.exp(-t * 90.0)[:, None] * 0.18
+    return _est(cuerpo * 0.78) + click
 
 
-def _shaker_acustico(dur_ms: float = 90) -> np.ndarray:
+def _clap_suave(dur_ms: float = 160) -> np.ndarray:
     t = _t(dur_ms)
-    ruido = _filtrar(np.random.uniform(-1, 1, (len(t), 2)), pasa_altos=5500, pasa_bajos=11500)
+    ruido = _filtrar(np.random.uniform(-1, 1, (len(t), 2)), pasa_altos=850, pasa_bajos=4500)
+    env = np.exp(-t * 24.0)
+    return ruido * env[:, None] * 0.22
+
+
+def _shaker_estereo(dur_ms: float = 80, acento: bool = False) -> np.ndarray:
+    t = _t(dur_ms)
+    ruido = _filtrar(np.random.uniform(-1, 1, (len(t), 2)), pasa_altos=5800, pasa_bajos=12500)
     env = np.sin(np.pi * (t / (dur_ms / 1000.0))) ** 2
-    return ruido * env[:, None] * 0.14
+    return ruido * env[:, None] * (0.20 if acento else 0.12)
+
+
+def _whoosh_fm(dur_ms: float = 650, f_ini: float = 300.0, f_fin: float = 4200.0) -> np.ndarray:
+    """Barrido de aire FM moderno que se mueve de izquierda a derecha."""
+    t = _t(dur_ms)
+    prog = t / (dur_ms / 1000.0)
+    ruido = _filtrar(np.random.uniform(-1, 1, (len(t), 2)), pasa_altos=350, pasa_bajos=6500)
+    f_curva = f_ini * ((f_fin / f_ini) ** (prog ** 1.5))
+    fase = 2 * np.pi * np.cumsum(f_curva) / SR
+    tono = np.sin(fase) * 0.18
+    env = np.sin(np.pi * (prog ** 1.4)) ** 2
+    pan_l = 0.2 + 0.8 * prog
+    pan_r = 1.0 - 0.8 * prog
+    out = (ruido * 0.55 + np.column_stack((tono * pan_l, tono * pan_r))) * env[:, None]
+    return _pico(out, 0.80)
+
+
+def _sub_drop_suave(dur_ms: float = 1100) -> np.ndarray:
+    """Golpe subgrave redondo de separador de radio."""
+    t = _t(dur_ms)
+    f_curva = 34.0 + 65.0 * np.exp(-t * 7.0)
+    fase = 2 * np.pi * np.cumsum(f_curva) / SR
+    onda = np.tanh(np.sin(fase) * 1.5) * np.exp(-t * 2.6)
+    return _est(onda * 0.70)
 
 
 # ---------------------------------------------------------------------------
-# Sweepers Cálidos para Radio Redimidos
+# Sweepers Radio Redimidos (Adaptados según Mañana, Tarde o Noche)
 # ---------------------------------------------------------------------------
 
-def sintetizar_intro() -> np.ndarray:
-    """Intro luminosa y serena: Swell de Piano en Sol Mayor 9 + Arpegio de campanas cálidas."""
-    pista = _pista(2700)
-    # Swell de entrada suave
-    t = _t(850)
-    swell = _piano_calido([392.00, 493.88, 587.33, 740.00], 850, decay=0.2) * ((t / 0.85) ** 2.5)[:, None]
-    _sumar(pista, swell, 0, 0.85)
-
-    # Acorde principal Gmaj9 en ms 820
-    _sumar(pista, _bombo_suave(350), 820, 0.9)
-    _sumar(pista, _bajo_acustico(98.00, 1700), 820, 0.95)
-    _sumar(pista, _piano_calido([392.00, 493.88, 587.33, 740.00, 880.00], 1700, decay=1.8), 820, 0.90)
-
-    # Melodía inspiracional de 4 notas (G5 -> A5 -> B5 -> D6)
-    notas = [(783.99, 0, 0.3), (880.00, 150, 0.7), (987.77, 300, 0.35), (1174.66, 450, 0.65)]
-    logo = _pista(1800)
-    for f, pos, pan in notas:
-        _sumar(logo, _bell_chime(f, 950, pan=pan), pos, 0.95)
-    _sumar(pista, _stereo_delay(logo, 260, 390, 0.38, 0.35), 840, 0.90)
-
-    return _fade(_reverb_estereo(pista, seg=1.6, mezcla=0.38), 10, 400)
-
-
-def sintetizar_cierre() -> np.ndarray:
-    """Cierre cálido con resolución en Sol Mayor y campanas suaves."""
-    pista = _pista(2200)
-    notas = [(1174.66, 0, 0.7), (987.77, 150, 0.3), (880.00, 300, 0.65), (783.99, 450, 0.5)]
-    mel = _pista(1900)
-    for f, pos, pan in notas:
-        _sumar(mel, _bell_chime(f, 1100, pan=pan), pos, 0.90)
-    _sumar(pista, _stereo_delay(mel, 280, 420, 0.35, 0.32), 0, 0.90)
-
-    _sumar(pista, _bombo_suave(350), 450, 0.90)
-    _sumar(pista, _bajo_acustico(98.00, 1600), 450, 0.95)
-    _sumar(pista, _piano_calido([392.00, 493.88, 587.33, 783.99], 1600, decay=2.0), 450, 0.95)
-
-    return _fade(_reverb_estereo(pista, seg=1.7, mezcla=0.40), 10, 500)
-
-
-def bed_redimidos(modo: str, dur_ms: float) -> np.ndarray:
+def sintetizar_intro(momento: str) -> np.ndarray:
     """
-    Cortina musical inspiracional a 96 BPM:
-    Progresión Gmaj9 -> D/F# -> Em7 -> Cmaj9 con Piano Eléctrico, Pad Celestial y Shaker suave.
+    Intro radial con Pips horarios suaves + Whoosh FM + Impacto Grave + Melodía que cambia según la hora.
+    """
+    pista = _pista(2700)
+
+    # Pips horarios cristalinos + Whoosh de entrada
+    _sumar(pista, _whoosh_fm(780, 250, 4500), 40, 0.80)
+    for i, pos in enumerate([160, 400, 640]):
+        dur = 220 if i == 2 else 65
+        f_pip = 1174.66 if i == 2 else 587.33  # D5 -> D5 -> D6
+        t = _t(dur)
+        pip = np.sin(2 * np.pi * f_pip * t) * np.exp(-t * (8.0 if i == 2 else 24.0))
+        _sumar(pista, _est(pip * 0.32), pos)
+
+    # Golpe en ms 800
+    _sumar(pista, _sub_drop_suave(1200), 780, 0.85)
+    _sumar(pista, _bombo_radio(300), 800, 1.0)
+
+    if momento == "manana":
+        # Mañana: Sol Mayor brillante ascendente
+        acorde = [392.00, 493.88, 587.33, 740.00, 880.00]
+        notas_logo = [(783.99, 0, 0.25), (987.77, 120, 0.75), (1174.66, 240, 0.30), (1567.98, 360, 0.70)]
+        bajo_f = 98.00
+    elif momento == "tarde":
+        # Tarde: La Mayor / Pop moderno energético
+        acorde = [440.00, 554.37, 659.25, 830.61, 987.77]
+        notas_logo = [(880.00, 0, 0.3), (1108.73, 110, 0.7), (1318.51, 220, 0.3), (1760.00, 330, 0.65)]
+        bajo_f = 110.00
+    else:
+        # Noche: Fa Mayor 9 cálido y reflexivo
+        acorde = [349.23, 440.00, 523.25, 659.25, 783.99]
+        notas_logo = [(698.46, 0, 0.3), (880.00, 140, 0.7), (1046.50, 280, 0.4), (1318.51, 420, 0.6)]
+        bajo_f = 87.31
+
+    _sumar(pista, _bajo_fm(bajo_f, 1600), 800, 0.95)
+    _sumar(pista, _piano_calido(acorde, 1650, decay=1.8), 800, 0.95)
+
+    logo = _pista(1800)
+    for f, pos, pan in notas_logo:
+        _sumar(logo, _bell_chime(f, 850, pan=pan), pos, 1.0)
+    _sumar(pista, _stereo_delay(logo, 240, 360, 0.38, 0.35), 830, 0.95)
+
+    return _fade(_reverb_estereo(pista, seg=1.5, mezcla=0.35), 10, 350)
+
+
+def sintetizar_transicion(momento: str) -> np.ndarray:
+    """
+    Separador FM entre el Locutor 1 (Clima) y el Locutor 2 (Frase institucional):
+    Whoosh rápido + Sub-drop + Stinger musical de 3 notas con eco.
+    """
+    pista = _pista(1550)
+    _sumar(pista, _whoosh_fm(420, 3200, 400), 0, 0.85)
+    _sumar(pista, _sub_drop_suave(900), 280, 0.85)
+    _sumar(pista, _bombo_radio(260), 300, 0.95)
+    _sumar(pista, _clap_suave(160), 300, 0.80)
+
+    notas_stinger = (
+        [587.33, 880.00, 1174.66] if momento == "manana"
+        else ([659.25, 987.77, 1318.51] if momento == "tarde" else [523.25, 783.99, 1046.50])
+    )
+    stinger = _pista(1150)
+    for i, f in enumerate(notas_stinger):
+        _sumar(stinger, _bell_chime(f, 600, pan=0.3 if i % 2 == 0 else 0.7), i * 95, 1.0)
+    _sumar(stinger, _piano_calido(notas_stinger, 900, decay=2.4), 180, 0.85)
+    _sumar(pista, _stereo_delay(stinger, 180, 270, 0.35, 0.32), 300, 0.95)
+
+    return _fade(_reverb_estereo(pista, seg=1.1, mezcla=0.32), 10, 250)
+
+
+def sintetizar_cierre(momento: str) -> np.ndarray:
+    """Cierre final redondo con cascada de campanas + acorde cálido y golpe suave."""
+    pista = _pista(2150)
+    _sumar(pista, _whoosh_fm(450, 400, 3500), 0, 0.65)
+
+    notas = [1174.66, 987.77, 880.00, 783.99]
+    mel = _pista(1850)
+    for i, f in enumerate(notas):
+        _sumar(mel, _bell_chime(f, 950, pan=0.7 - i * 0.15), i * 120, 0.95)
+    _sumar(pista, _stereo_delay(mel, 260, 390, 0.35, 0.32), 0, 0.90)
+
+    _sumar(pista, _sub_drop_suave(1200), 380, 0.85)
+    _sumar(pista, _bombo_radio(320), 400, 0.95)
+    _sumar(pista, _bajo_fm(98.00, 1550), 400, 0.95)
+    _sumar(pista, _piano_calido([392.00, 493.88, 587.33, 783.99], 1550, decay=1.9), 400, 0.95)
+
+    return _fade(_reverb_estereo(pista, seg=1.6, mezcla=0.38), 10, 450)
+
+
+# ---------------------------------------------------------------------------
+# Canción de Fondo + Efectos del Clima (Variables por Hora y Estado del Tiempo)
+# ---------------------------------------------------------------------------
+
+def bed_redimidos_dinamico(momento: str, estado_clima: str, dur_ms: float) -> np.ndarray:
+    """
+    Genera una canción instrumental de fondo que cambia su ritmo y acordes según la hora (Mañana/Tarde/Noche)
+    y superpone efectos climáticos reales (Lluvia, Truenos, Viento o Destellos FM) según el tiempo en Resistencia.
     """
     pista = _pista(dur_ms)
     t = _t(dur_ms)
-    beat_ms = 625.0  # 96 BPM (tempo tranquilo y amable)
+
+    # Tempo según la hora del día: Tarde más movida (112 BPM), Mañana fresca (106 BPM), Noche tranquila (96 BPM)
+    bpm = 112.0 if momento == "tarde" else (106.0 if momento == "manana" else 96.0)
+    beat_ms = 60000.0 / bpm
     compas_ms = beat_ms * 4
 
-    progresion = [
-        ([392.00, 493.88, 587.33, 740.00], [783.99, 987.77, 1174.66], 98.00),   # Gmaj7
-        ([369.99, 440.00, 587.33, 740.00], [740.00, 880.00, 1174.66], 92.50),   # D/F#
-        ([329.63, 392.00, 493.88, 587.33], [659.25, 783.99, 987.77], 82.41),    # Em7
-        ([261.63, 329.63, 392.00, 493.88], [523.25, 659.25, 783.99], 65.41),    # Cmaj7
-    ]
+    # Progresiones musicales según hora y clima
+    if estado_clima in ("lluvia", "tormenta"):
+        # Armonía emotiva y cálida bajo la lluvia (Em9 -> Cmaj9 -> Gmaj7 -> D6)
+        progresion = [
+            ([329.63, 392.00, 493.88, 587.33, 740.00], [659.25, 783.99, 987.77, 1174.66], 82.41),
+            ([261.63, 329.63, 392.00, 493.88, 587.33], [523.25, 659.25, 783.99, 987.77], 65.41),
+            ([392.00, 493.88, 587.33, 740.00, 783.99], [783.99, 987.77, 1174.66, 1480.0], 98.00),
+            ([293.66, 369.99, 440.00, 587.33, 659.25], [587.33, 740.00, 880.00, 1174.66], 73.42),
+        ]
+    elif momento == "tarde":
+        # Tarde luminosa y arriba (Aadd9 -> E/G# -> F#m7 -> Dmaj9)
+        progresion = [
+            ([440.00, 554.37, 659.25, 987.77], [880.00, 1108.73, 1318.51, 987.77], 110.00),
+            ([415.30, 493.88, 659.25, 783.99], [830.61, 987.77, 1318.51, 1567.98], 103.83),
+            ([369.99, 440.00, 554.37, 659.25], [740.00, 880.00, 1108.73, 1318.51], 92.50),
+            ([293.66, 369.99, 440.00, 554.37], [587.33, 740.00, 880.00, 1108.73], 73.42),
+        ]
+    else:
+        # Mañana / Noche: Sol Mayor inspiracional (Gmaj9 -> D/F# -> Em7 -> Cmaj9)
+        progresion = [
+            ([392.00, 493.88, 587.33, 740.00], [783.99, 987.77, 1174.66, 1480.0], 98.00),
+            ([369.99, 440.00, 587.33, 740.00], [740.00, 880.00, 1174.66, 1318.51], 92.50),
+            ([329.63, 392.00, 493.88, 587.33], [659.25, 783.99, 987.77, 1174.66], 82.41),
+            ([261.63, 329.63, 392.00, 493.88], [523.25, 659.25, 783.99, 987.77], 65.41),
+        ]
 
+    # 1. Construcción de la canción instrumental (Pad + Piano Rhodes rítmico + Bajo + Arpegio de campanas)
     num_compases = int(dur_ms / compas_ms) + 2
-    armonia = _pista(dur_ms)
+    musica = _pista(dur_ms)
 
     for c in range(num_compases):
         ini_c = c * compas_ms
         if ini_c >= dur_ms:
             break
         acorde, arp, bajo = progresion[c % len(progresion)]
-        _sumar(armonia, _pad_celestial(acorde, compas_ms + 300), ini_c, 0.90)
-        _sumar(armonia, _piano_calido(acorde, compas_ms * 0.95, decay=1.6), ini_c, 0.75)
-        _sumar(armonia, _bajo_acustico(bajo, beat_ms * 2.2), ini_c, 0.80)
-        _sumar(armonia, _bajo_acustico(bajo, beat_ms * 1.5), ini_c + beat_ms * 2.0, 0.65)
+        _sumar(musica, _pad_celestial(acorde, compas_ms + 250, corte_lp=1600), ini_c, 0.90)
+        _sumar(musica, _piano_calido(acorde, compas_ms * 0.85, decay=1.8), ini_c, 0.85)
+        # Acorde sincopado de piano en el pulso 2.5 para darle swing de canción real
+        _sumar(musica, _piano_calido(acorde, beat_ms * 1.5, decay=2.5), ini_c + beat_ms * 1.5, 0.65)
+        _sumar(musica, _piano_calido(acorde, beat_ms * 1.0, decay=3.0), ini_c + beat_ms * 3.0, 0.55)
 
-        # Arpegio suave de campana/piano en cada tiempo del compás
-        for b in range(4):
-            nota_arp = arp[b % len(arp)]
-            pan = 0.35 if b % 2 == 0 else 0.65
-            _sumar(armonia, _bell_chime(nota_arp, 550, pan=pan), ini_c + b * beat_ms + beat_ms * 0.5, 0.42)
+        # Línea de bajo musical
+        _sumar(musica, _bajo_fm(bajo, beat_ms * 1.8), ini_c, 0.90)
+        _sumar(musica, _bajo_fm(bajo * 1.5 if c % 2 == 0 else bajo, beat_ms * 1.2), ini_c + beat_ms * 2.0, 0.75)
+        _sumar(musica, _bajo_fm(bajo, beat_ms * 0.8), ini_c + beat_ms * 3.5, 0.70)
 
-    pista += _stereo_delay(armonia, 312, 468, 0.30, 0.25)
+        # Melodía punteada (Arpegio en corcheas)
+        corchea_ms = beat_ms * 0.5
+        for k in range(8):
+            nota_f = arp[k % len(arp)]
+            pan = 0.25 if k % 2 == 0 else 0.75
+            _sumar(musica, _bell_chime(nota_f, 420, pan=pan), ini_c + k * corchea_ms, 0.55)
 
-    # Pulso rítmico súper suave (Bombo redondo en 1 y 3, Shaker acústico en corcheas)
-    bombo = _bombo_suave(260)
-    shaker = _shaker_acustico(80)
+    # Bombeo Sidechain suave para que la canción respire con la batería
+    fase_beat = (t * (1000.0 / beat_ms)) % 1.0
+    sidechain = 0.60 + 0.40 * (1.0 - np.exp(-fase_beat * 4.8))
+    musica *= sidechain[:, None]
+    pista += _stereo_delay(musica, int(beat_ms * 0.5), int(beat_ms * 0.75), 0.30, 0.26)
+
+    # 2. Batería Pop/Acústica (Bombo en todos los tiempos, Clap suave en 2 y 4, Shakers en semicorcheas)
+    bombo = _bombo_radio(240)
+    clap = _clap_suave(150)
+    sh_fuerte = _shaker_estereo(70, acento=True)
+    sh_debil = _shaker_estereo(60, acento=False)
+
     for b in range(int(dur_ms / beat_ms) + 1):
         pos_b = b * beat_ms
-        if b % 2 == 0:
-            _sumar(pista, bombo, pos_b, 0.65)
-        _sumar(pista, shaker, pos_b, 0.55)
-        _sumar(pista, shaker * 0.6, pos_b + beat_ms * 0.5, 0.45)
+        _sumar(pista, bombo, pos_b, 0.80)
+        if b % 2 == 1:
+            _sumar(pista, clap, pos_b, 0.65)
+        _sumar(pista, sh_fuerte, pos_b, 0.60)
+        _sumar(pista, sh_debil, pos_b + beat_ms * 0.25, 0.45)
+        _sumar(pista, sh_fuerte, pos_b + beat_ms * 0.50, 0.65)
+        _sumar(pista, sh_debil, pos_b + beat_ms * 0.75, 0.45)
 
-    if modo == "lluvia":
-        agua = _filtrar(np.random.uniform(-1, 1, (len(t), 2)), pasa_altos=1100, pasa_bajos=6800)
-        pista += agua * 0.14
+    # 3. Efectos Climáticos y de Radio sobre la canción
+    if estado_clima in ("lluvia", "tormenta"):
+        # Lluvia estéreo bien clara + Truenos profundos si hay tormenta
+        agua = _filtrar(np.random.uniform(-1, 1, (len(t), 2)), pasa_altos=1000, pasa_bajos=7500)
+        oleaje = 0.75 + 0.25 * np.sin(2 * np.pi * 0.28 * t)
+        pista += agua * oleaje[:, None] * 0.22
+        if estado_clima == "tormenta":
+            for pos_tr in (dur_ms * 0.16, dur_ms * 0.58):
+                t_tr = _t(2600)
+                trueno = _filtrar(np.random.uniform(-1, 1, (len(t_tr), 2)), pasa_altos=30, pasa_bajos=150)
+                env_tr = np.minimum(t_tr / 0.18, 1.0) * np.exp(-t_tr * 1.3)
+                _sumar(pista, _pico(trueno * env_tr[:, None], 0.80), pos_tr, 0.75)
 
-    return _filtrar(pista, pasa_altos=40, pasa_bajos=9500)
+    elif estado_clima == "viento":
+        # Ráfagas de brisa aerodinámica estéreo
+        brisa = _filtrar(np.random.uniform(-1, 1, (len(t), 2)), pasa_altos=200, pasa_bajos=850)
+        mod = 0.5 + 0.5 * np.sin(2 * np.pi * 0.22 * t)
+        pista += brisa * mod[:, None] * 0.22
+
+    # Destellos de radio FM suaves cada 4.5 segundos para mantener dinamismo radial
+    for pos_fx in np.arange(2200, dur_ms - 1800, 4500):
+        _sumar(pista, _whoosh_fm(500, 400, 3200) * 0.35, pos_fx, 0.45)
+
+    return _filtrar(pista, pasa_altos=40, pasa_bajos=10500)
 
 
 # ---------------------------------------------------------------------------
-# Voces Edge TTS (Elena y Tomás) + Ensamblado
+# Carga de Assets opcionales
+# ---------------------------------------------------------------------------
+
+def buscar_asset(base: str) -> AudioSegment | None:
+    candidatos = []
+    for ext in EXTENSIONES:
+        candidatos += glob.glob(os.path.join(ASSETS_DIR, f"{base}*{ext}"))
+    if not candidatos:
+        return None
+    ruta = random.choice(sorted(candidatos))
+    print(f"Usando archivo propio: {ruta}")
+    return AudioSegment.from_file(ruta)
+
+
+def _extender(x: np.ndarray, n: int) -> np.ndarray:
+    if len(x) >= n:
+        return x[:n].copy()
+    cf = max(1, min(int(SR * 0.4), len(x) // 3))
+    salida = x.copy()
+    while len(salida) < n:
+        fade = np.linspace(0, 1, cf)[:, None]
+        salida[-cf:] = salida[-cf:] * (1 - fade) + x[:cf] * fade
+        salida = np.vstack((salida, x[cf:]))
+    return salida[:n]
+
+
+# ---------------------------------------------------------------------------
+# Voces Edge TTS (Elena y Tomás combinados) + Ensamblado del Spot
 # ---------------------------------------------------------------------------
 
 async def _edge_tts_bytes(texto: str, nombre_voz: str) -> bytes:
@@ -501,55 +704,110 @@ async def _edge_tts_bytes(texto: str, nombre_voz: str) -> bytes:
 
 def sintetizar_voz(texto: str, es_mujer: bool) -> np.ndarray:
     voz_edge = "es-AR-ElenaNeural" if es_mujer else "es-AR-TomasNeural"
-    print(f"Locución con voz argentina: {voz_edge}")
     audio_bytes = asyncio.run(_edge_tts_bytes(texto, voz_edge))
     seg = AudioSegment.from_file(io.BytesIO(audio_bytes), format="mp3")
     return seg_a_array(seg)
 
 
 def procesar_voz(x: np.ndarray) -> np.ndarray:
+    """Procesador vocal FM con cuerpo, presencia y micro-doubler estéreo."""
     x = _filtrar(x, pasa_altos=80)
     calidez = _filtrar(x, pasa_altos=110, pasa_bajos=250)
-    presencia = _filtrar(x, pasa_altos=2500, pasa_bajos=5600)
-    x = x + 0.22 * calidez + 0.25 * presencia
-    x = _comprimir(x, thr_db=-22.0, ratio=3.4, ataque_ms=5.0, relajo_ms=130.0)
+    presencia = _filtrar(x, pasa_altos=2500, pasa_bajos=5800)
+    aire = np.tanh(_filtrar(x, pasa_altos=6500) * 2.0) * 0.10
+    x = x + 0.22 * calidez + 0.26 * presencia + aire
+
+    d_l = int(SR * 0.011)
+    d_r = int(SR * 0.016)
+    doble = np.zeros_like(x)
+    doble[d_l:, 0] = x[:-d_l, 0] * 0.12
+    doble[d_r:, 1] = x[:-d_r, 1] * 0.12
+    x = x + _filtrar(doble, pasa_altos=250, pasa_bajos=4000)
+
+    x = _comprimir(x, thr_db=-22.5, ratio=3.5, ataque_ms=4.0, relajo_ms=120.0)
     return _pico(x, 0.90)
 
 
-def generar_spot(texto_clima: str, ambiente_nombre: str, path_salida: str) -> None:
+def generar_spot(texto_voz_1: str, texto_voz_2: str, estado_clima: str, path_salida: str) -> None:
     ahora = datetime.now(ZONA_HORARIA)
-    es_mujer = (ahora.hour % 2 == 0)
+    momento = momento_del_dia(ahora.hour)
 
-    voz_clima = procesar_voz(sintetizar_voz(texto_clima, es_mujer))
-    intro = _pico(sintetizar_intro(), 0.92)
-    cierre = _pico(sintetizar_cierre(), 0.92)
+    # Rotación por hora: Hora par -> Abre Mujer (Clima) y cierra Hombre (Frase FM). Hora impar -> Al revés.
+    abre_mujer = (ahora.hour % 2 == 0)
+    if abre_mujer:
+        print(f"Dúo Redimidos (Hora Par - {momento}): Abre Elena (Clima) -> Transición FM -> Cierra Tomás (Institucional)")
+    else:
+        print(f"Dúo Redimidos (Hora Impar - {momento}): Abre Tomás (Clima) -> Transición FM -> Cierra Elena (Institucional)")
 
-    dur_cama = _dur_ms(voz_clima) + 1200
-    ambiente = _fade(_rms(bed_redimidos(ambiente_nombre, dur_cama), REFERENCIA_RMS_DB), 400, 900)
+    voz_1 = procesar_voz(sintetizar_voz(texto_voz_1, abre_mujer))
+    voz_2 = procesar_voz(sintetizar_voz(texto_voz_2, not abre_mujer))
 
-    inicio_clima = 1450.0
-    fin_clima = inicio_clima + _dur_ms(voz_clima)
-    inicio_cierre = fin_clima - 200.0
+    intro = _pico(sintetizar_intro(momento), 0.94)
+    trans = _pico(sintetizar_transicion(momento), 0.94)
+    cierre = _pico(sintetizar_cierre(momento), 0.94)
+
+    # Tiempos de enganche estilo operador de FM
+    inicio_v1 = 1480.0
+    fin_v1 = inicio_v1 + _dur_ms(voz_1)
+
+    inicio_trans = fin_v1 - 120.0
+    inicio_v2 = inicio_trans + 820.0
+    fin_v2 = inicio_v2 + _dur_ms(voz_2)
+
+    inicio_cierre = fin_v2 - 180.0
     total_ms = inicio_cierre + _dur_ms(cierre)
 
+    # 1. Bus de Voces (Elena + Tomás)
     bus_voces = _pista(total_ms + 400)
-    _sumar(bus_voces, voz_clima, inicio_clima, 1.0)
+    _sumar(bus_voces, voz_1, inicio_v1, 1.0)
+    _sumar(bus_voces, voz_2, inicio_v2, 1.0)
+
+    # 2. Bus de Canción de Fondo + Clima (Acompaña todo el spot desde el golpe de la intro)
+    dur_cancion = total_ms - 600.0
+    print(f"Generando canción de fondo ({momento}) + efecto climático ({estado_clima})...")
+    cancion_fondo = _fade(_rms(bed_redimidos_dinamico(momento, estado_clima, dur_cancion), REFERENCIA_RMS_DB), 350, 900)
 
     bus_cortina = _pista(total_ms + 400)
-    _sumar(bus_cortina, ambiente, 820.0, _g(AMBIENTE_DB))
-    bus_cortina = _ducking_por_voz(bus_cortina, bus_voces, reduccion_db=-5.0)
+    _sumar(bus_cortina, cancion_fondo, 800.0, _g(AMBIENTE_DB))
 
+    # Si subiste un archivo propio assets/cama.mp3, se suma también
+    seg_cama_ext = buscar_asset("cama")
+    if seg_cama_ext is not None:
+        cama_ext = _rms(seg_a_array(seg_cama_ext), REFERENCIA_RMS_DB)
+        _sumar(bus_cortina, _extender(cama_ext, len(bus_cortina)), 0.0, _g(CAMA_EXTERNA_DB))
+
+    bus_cortina = _ducking_por_voz(bus_cortina, bus_voces, reduccion_db=-3.8)
+
+    # 3. Bus de Sweepers FM (Intro, Transición del medio y Cierre)
     bus_fx = _pista(total_ms + 400)
     _sumar(bus_fx, intro, 0.0, _g(EFECTOS_DB))
+    _sumar(bus_fx, trans, inicio_trans, _g(EFECTOS_DB))
     _sumar(bus_fx, cierre, inicio_cierre, _g(EFECTOS_DB))
 
+    # 4. Masterización Multibanda + Ensanchador Estéreo FM
     master = (bus_voces + bus_cortina + bus_fx)[: int(SR * total_ms / 1000)]
-    master = _comprimir(_filtrar(master, pasa_altos=35), thr_db=-14.5, ratio=3.0, ataque_ms=10.0, relajo_ms=150.0)
-    final = _pico(np.tanh(master * 1.12), 0.94)
+    master = _filtrar(master, pasa_altos=35)
+
+    graves = _comprimir(_filtrar(master, pasa_bajos=200), thr_db=-18.0, ratio=3.2, ataque_ms=10.0, relajo_ms=150.0)
+    medios = _comprimir(_filtrar(master, pasa_altos=200, pasa_bajos=4200), thr_db=-17.0, ratio=2.6, ataque_ms=8.0, relajo_ms=140.0)
+    agudos = _comprimir(_filtrar(master, pasa_altos=4200), thr_db=-19.0, ratio=2.4, ataque_ms=4.0, relajo_ms=90.0)
+    master = graves * 1.08 + medios * 1.0 + agudos * 1.12
+
+    mid = 0.5 * (master[:, 0] + master[:, 1])
+    side = 0.5 * (master[:, 0] - master[:, 1])
+    side_amplio = _filtrar(_est(side), pasa_altos=220)[:, 0] * 1.28
+    master = np.column_stack((mid + side_amplio, mid - side_amplio))
+
+    master = _comprimir(master, thr_db=-13.5, ratio=3.8, ataque_ms=5.0, relajo_ms=120.0)
+    final = _pico(np.tanh(master * 1.15), 0.95)
 
     array_a_seg(final).export(path_salida, format="mp3", bitrate="192k")
-    print(f"¡Spot Redimidos ({len(final) / SR:.1f} s) guardado exitosamente en {path_salida}!")
+    print(f"¡Spot Dúo Redimidos ({len(final) / SR:.1f} s) guardado exitosamente en {path_salida}!")
 
+
+# ---------------------------------------------------------------------------
+# Subida SFTP y Main
+# ---------------------------------------------------------------------------
 
 def subir_sftp(local_path: str, host: str, port: int, user: str, password: str, remote_dir: str) -> None:
     transport = paramiko.Transport((host, port))
@@ -567,7 +825,7 @@ def subir_sftp(local_path: str, host: str, port: int, user: str, password: str, 
 
 
 def main():
-    print(f"=== GENERANDO SPOT ESTILO CALIDO PARA: {NOMBRE_EMISORA} ===")
+    print(f"=== GENERANDO SPOT DUO FM PARA: {NOMBRE_EMISORA} ===")
     sftp_host = os.environ.get("SFTP_HOST", "").strip()
     sftp_port = int(os.environ.get("SFTP_PORT") or "2022")
     sftp_user = os.environ.get("SFTP_USER", "").strip()
@@ -580,10 +838,10 @@ def main():
         sys.exit(1)
 
     datos_clima = obtener_clima()
-    texto_clima = armar_texto_clima(datos_clima)
-    ambiente_nombre = elegir_ambiente(datos_clima)
+    texto_voz_1, texto_voz_2 = armar_dialogo_spot(datos_clima)
+    estado_clima = analizar_estado_clima(datos_clima)
 
-    generar_spot(texto_clima, ambiente_nombre, LOCAL_MP3)
+    generar_spot(texto_voz_1, texto_voz_2, estado_clima, LOCAL_MP3)
     subir_sftp(LOCAL_MP3, sftp_host, sftp_port, sftp_user, sftp_pass, sftp_dir)
     print("Listo.")
 
