@@ -239,22 +239,16 @@ def normalizar_comparacion(texto: str) -> str:
 
 
 def construir_noticia_limpia(titulo: str, descripcion: str) -> str:
-    """
-    Verifica que la descripción no repita el título y recorta a la primera oración clara
-    para que la noticia se entienda perfecto y no suene repetitiva.
-    """
     titulo = titulo.strip().rstrip(".")
     if not descripcion:
         return f"{titulo}."
 
-    # Cortamos la descripción en la primera oración (máximo 180 caracteres)
     oraciones = re.split(r'(?<=[.!?])\s+', descripcion)
     primera_oracion = oraciones[0].strip().rstrip(".")
 
     norm_tit = normalizar_comparacion(titulo)
     norm_desc = normalizar_comparacion(primera_oracion)
 
-    # Si la descripción empieza igual que el título, está contenida o es muy parecida, usamos solo el título
     if not norm_desc or norm_tit in norm_desc or norm_desc in norm_tit:
         return f"{titulo}."
     if len(norm_tit) > 15 and norm_desc[:18] == norm_tit[:18]:
@@ -266,16 +260,11 @@ def construir_noticia_limpia(titulo: str, descripcion: str) -> str:
 
 
 def obtener_titular_verificado(lista_feeds: list[str], cantidad: int = 20) -> str | None:
-    """
-    Recorre las fuentes RSS con anti-caché, filtra titulares duplicados o muy cortos
-    y elige uno combinando la hora + azar para que no repita siempre el mismo.
-    """
     entradas_unicas = []
     vistos = set()
 
     for url_base in lista_feeds:
         try:
-            # Parámetro anti-caché para obligar al servidor a dar el RSS fresco
             sep = "&" if "?" in url_base else "?"
             url_fresca = f"{url_base}{sep}_t={int(time.time() // 300)}"
             headers = {
@@ -310,9 +299,8 @@ def obtener_titular_verificado(lista_feeds: list[str], cantidad: int = 20) -> st
     if not entradas_unicas:
         return None
 
-    # Mezcla rotación por hora con selección aleatoria entre las noticias más recientes
     ahora = datetime.now(ZONA_HORARIA)
-     candidatos_top = entradas_unicas[: min(10, len(entradas_unicas))]
+    candidatos_top = entradas_unicas[: min(10, len(entradas_unicas))]
     indice = (ahora.hour + random.randint(0, len(candidatos_top) - 1)) % len(candidatos_top)
     elegida = candidatos_top[indice]
     print(f"Noticia seleccionada ({len(entradas_unicas)} disponibles): {elegida[:80]}...")
@@ -428,10 +416,6 @@ def _filtrar(x: np.ndarray, pasa_altos: float | None = None, pasa_bajos: float |
 
 
 def _hueco_vocal_cortina(x: np.ndarray) -> np.ndarray:
-    """
-    Atenúa las frecuencias medias (900 Hz a 3400 Hz) de la música de fondo
-    para dejar un 'bolsillo' acústico donde la voz del locutor se entienda 100% nítida.
-    """
     medios_voz = _filtrar(x, pasa_altos=900, pasa_bajos=3400, orden=2)
     return x - medios_voz * 0.48
 
@@ -472,7 +456,6 @@ def _recortar_silencio(x: np.ndarray, umbral: float = 0.015) -> np.ndarray:
 
 
 def _estirar_pitch_slow(trozo: np.ndarray, factor: float = 1.32) -> np.ndarray:
-    """Efecto Slow / Pitch-Down de FM: desacelera y engrosa la voz final."""
     n_orig = len(trozo)
     n_nuevo = int(n_orig * factor)
     idx_orig = np.arange(n_orig)
@@ -484,13 +467,6 @@ def _estirar_pitch_slow(trozo: np.ndarray, factor: float = 1.32) -> np.ndarray:
 
 
 def aplicar_fx_final_voz(x: np.ndarray, es_cierre_final: bool = True) -> tuple[np.ndarray, str]:
-    """
-    Aplica efectos de radio FM a la última frase del locutor:
-      - 'slow_fm': Desacelera (slow/pitch-down) la repetición de las últimas palabras + eco.
-      - 'eco_pingpong': Rebote estéreo izquierda-derecha clásico de FM.
-      - 'glitch_stutter': Tartamudeo digital rítmico + cola de eco.
-      - 'megafono_delay': Filtro de radio + delay espacial.
-    """
     if es_cierre_final:
         opciones = ["slow_fm", "eco_pingpong", "glitch_stutter", "megafono_delay"]
     else:
@@ -507,15 +483,12 @@ def aplicar_fx_final_voz(x: np.ndarray, es_cierre_final: bool = True) -> tuple[n
     trozo_filtrado = _filtrar(trozo_final, pasa_altos=380, pasa_bajos=3200)
 
     if modo_fx == "slow_fm":
-        # El locutor dice la frase normal e inmediatamente sale una réplica en "Slow Motion" grave en estéreo + eco
         trozo_slow = _fade(_estirar_pitch_slow(trozo_final, factor=1.30), 30, 60) * 0.78
-        # Abrimos en estéreo el efecto slow
         d_s = int(SR * 0.015)
         trozo_slow[d_s:, 1] = trozo_slow[:-d_s, 1]
         out = np.pad(x, ((0, len(trozo_slow) + int(SR * 0.45)), (0, 0)))
         ini_slow = len(x) - int(SR * 0.06)
         _sumar(out, trozo_slow, ini_slow * 1000.0 / SR, 0.90)
-        # Segundo eco más suave y grave
         _sumar(out, _filtrar(trozo_slow, pasa_bajos=2200), (ini_slow + int(SR * 0.32)) * 1000.0 / SR, 0.42)
         return out, "Slow Pitch-Down FM + Eco"
 
@@ -570,7 +543,6 @@ def aplicar_fx_final_voz(x: np.ndarray, es_cierre_final: bool = True) -> tuple[n
 
 
 def _ducking_por_voz(fondo: np.ndarray, pista_voz: np.ndarray, reduccion_db: float = -6.5) -> np.ndarray:
-    """Baja la cortina -6.5 dB cuando el locutor habla y la sube en las pausas."""
     n = min(len(fondo), len(pista_voz))
     blk = int(SR * 0.015)
     nb = n // blk + 1
@@ -730,13 +702,11 @@ def _laser_drop(dur_ms: float = 420) -> np.ndarray:
 # ---------------------------------------------------------------------------
 
 def sintetizar_intro() -> np.ndarray:
-    """Elige al azar entre 3 estilos de Intro FM Pro para que siempre varíe la entrada."""
     estilo = random.choice(["top40_pips", "urban_drop", "cyber_riser"])
     print(f"Estilo de Intro FM elegido: [{estilo}]")
     pista = _pista(2800)
 
     if estilo == "top40_pips":
-        # 1) Pips horarios modernos en Do6 + Whoosh + Acorde Am9 + Fanfarria ascendente
         _sumar(pista, _whoosh_aerodinamico(780, 250, 5000), 20, 0.85)
         for i, pos in enumerate([120, 340, 560, 780]):
             es_ultimo = (i == 3)
@@ -752,7 +722,6 @@ def sintetizar_intro() -> np.ndarray:
         notas = [880.0, 1046.50, 1318.51, 1567.98, 1760.0]
 
     elif estilo == "urban_drop":
-        # 2) Doble golpe síncopado Urbano + Sub-Drop + Acorde Fmaj9 + Plucks rítmicos
         _sumar(pista, _whoosh_aerodinamico(600, 4000, 300), 0, 0.80)
         _sumar(pista, _kick_punch(240), 180, 0.90)
         _sumar(pista, _snare_pop(180), 400, 0.85)
@@ -763,7 +732,6 @@ def sintetizar_intro() -> np.ndarray:
         notas = [1046.50, 987.77, 783.99, 1046.50, 1318.51]
 
     else:
-        # 3) Cyber Riser + Laser Drop + Acorde Em9 + Arpegio estéreo moderno
         _sumar(pista, _whoosh_aerodinamico(800, 180, 5800), 0, 0.90)
         _sumar(pista, _laser_drop(420), 760, 0.85)
         _sumar(pista, _sub_drop_cine(1300), 780, 0.95)
@@ -781,7 +749,6 @@ def sintetizar_intro() -> np.ndarray:
 
 
 def sintetizar_transicion() -> np.ndarray:
-    """Elige al azar entre 3 separadores distintos para pasar del Clima a las Noticias."""
     estilo = random.choice(["flash_stinger", "swoosh_impact", "electro_pulse"])
     print(f"Estilo de Transición FM elegido: [{estilo}]")
     pista = _pista(1700)
@@ -814,7 +781,6 @@ def sintetizar_transicion() -> np.ndarray:
 
 
 def sintetizar_cierre() -> np.ndarray:
-    """Cierre final limpio con arpegio descendente + Impacto grave que se apaga suavemente."""
     pista = _pista(2200)
     notas_fin = [1760.0, 1567.98, 1318.51, 1046.50, 880.0]
     arp = _pista(1800)
@@ -838,7 +804,7 @@ def sintetizar_cierre() -> np.ndarray:
 def bed_clima_groove(modo: str, dur_ms: float) -> np.ndarray:
     pista = _pista(dur_ms)
     t = _t(dur_ms)
-    beat_ms = 500.0   # 120 BPM
+    beat_ms = 500.0
     semi_ms = 125.0
 
     if modo in ("lluvia", "tormenta"):
@@ -909,7 +875,7 @@ def bed_clima_groove(modo: str, dur_ms: float) -> np.ndarray:
 
 def bed_noticias_groove(dur_ms: float) -> np.ndarray:
     pista = _pista(dur_ms)
-    beat_ms = 468.75   # 128 BPM
+    beat_ms = 468.75
     semi_ms = beat_ms / 4.0
 
     secuencia = [220.0, 220.0, 440.0, 220.0, 329.63, 220.0, 392.0, 329.63]
@@ -993,7 +959,6 @@ def construir_cama_noticias(dur_ms: float) -> np.ndarray:
         print("Generando cortina V5 Breaking News (con salida fade-out limpia)...")
         base = bed_noticias_groove(dur_ms)
     x = _rms(_extender(base, n), REFERENCIA_RMS_DB)
-    # Fade-out largo de 2.4 segundos al final para que la música baje de a poco y cierre limpio
     return _fade(x, 250, 2400)
 
 
@@ -1024,10 +989,6 @@ def sintetizar_voz(client, texto: str, nombre_voz: str, audio_config) -> np.ndar
 
 
 def procesar_voz(x: np.ndarray) -> np.ndarray:
-    """
-    EQ de locutor principal de FM: refuerza articulación (2.8kHz - 5.5kHz) y cuerpo (130Hz)
-    con compresión niveladora para que ninguna palabra quede baja frente a la cortina.
-    """
     x = _filtrar(x, pasa_altos=85)
     cuerpo = _filtrar(x, pasa_altos=110, pasa_bajos=240)
     claridad = _filtrar(x, pasa_altos=2200, pasa_bajos=5600)
@@ -1066,13 +1027,11 @@ def ensamblar_spot(voz_clima_cruda, voz_noticias_cruda, intro, trans, cierre, am
     inicio_cierre = fin_voces_seco - 120.0
     total_ms = max(inicio_cierre + _dur_ms(cierre), fin_cola_vocal + 450.0)
 
-    # 1. Bus de Voces (al frente, sin atenuación)
     bus_voces = _pista(total_ms + 500)
     _sumar(bus_voces, voz_clima, inicio_clima, 1.0)
     if voz_noticias is not None and inicio_not is not None:
         _sumar(bus_voces, voz_noticias, inicio_not, 1.0)
 
-    # 2. Bus de Cortinas (con Fade-Out progresivo en los últimos 2.5s para salida limpia)
     bus_cortinas = _pista(total_ms + 500)
     if ambiente is not None:
         _sumar(bus_cortinas, ambiente, 800.0, _g(AMBIENTE_DB))
@@ -1083,7 +1042,6 @@ def ensamblar_spot(voz_clima_cruda, voz_noticias_cruda, intro, trans, cierre, am
 
     bus_cortinas = _ducking_por_voz(bus_cortinas, bus_voces, reduccion_db=-6.5)
 
-    # Curva maestra de salida limpia: va bajando la música de fondo suavemente cuando entra el cierre
     n_total = int(SR * total_ms / 1000)
     inicio_fade_out = max(0, int(SR * (fin_voces_seco - 600.0) / 1000))
     if n_total > inicio_fade_out:
@@ -1092,7 +1050,6 @@ def ensamblar_spot(voz_clima_cruda, voz_noticias_cruda, intro, trans, cierre, am
         bus_cortinas[inicio_fade_out:n_total] *= curva_salida[:, None]
         bus_cortinas[n_total:] = 0.0
 
-    # 3. Bus de Sweepers (Intro, Transición y Cierre)
     bus_fx = _pista(total_ms + 500)
     _sumar(bus_fx, intro, 0.0, _g(EFECTOS_DB))
     if inicio_trans is not None:
