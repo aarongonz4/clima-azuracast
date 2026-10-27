@@ -6,6 +6,7 @@ on:
 jobs:
   actualizar-clima:
     runs-on: ubuntu-latest
+    timeout-minutes: 4
     strategy:
       fail-fast: false
       matrix:
@@ -28,10 +29,10 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Instalar ffmpeg
+      - name: Instalar ffmpeg (con anti-cuelgues de red)
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout="15" update
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout="15" install -y --no-install-recommends ffmpeg
 
       - name: Instalar dependencias
         run: pip install -r requirements.txt
@@ -47,7 +48,7 @@ jobs:
           MOTOR_VOZ: ${{ matrix.motor }}
           GOOGLE_APPLICATION_CREDENTIALS: google_credentials.json
           NOMBRE_EMISORA: ${{ matrix.nombre }}
-          VELOCIDAD_VOZ: "+5%"
+          VELOCIDAD_VOZ: "+2%"
           SOLO_CLIMA: ${{ matrix.solo_clima }}
           SFTP_HOST: ${{ secrets[format('SFTP_HOST_{0}', matrix.id)] || (matrix.id == 'NOGARADIO' && secrets.SFTP_HOST) || '' }}
           SFTP_PORT: ${{ secrets[format('SFTP_PORT_{0}', matrix.id)] || (matrix.id == 'NOGARADIO' && secrets.SFTP_PORT) || '' }}
