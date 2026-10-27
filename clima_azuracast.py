@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-Spot automático de clima y noticias para AzuraCast (Nogaradio) - VERSION V6 BROADCAST POLISH (Estilo Urbana Play / La 100).
+Spot automático de clima y noticias para AzuraCast (Nogaradio) - VERSION V7 MASTER FM.
 
-Qué incluye esta versión corregida:
-  - CERO FALLAS EN EL FINAL DE VOZ: Detector automático de límites de palabra (_extraer_ultima_palabra) para no cortar
-    nunca una sílaba a la mitad. La voz original queda 100% intacta y los efectos (Eco, Slow, Stutter) salen limpios detrás.
-  - ENTRADA VOCAL ESTILO URBANA PLAY / LA 100: Efecto "Reverse Vocal Swell" (pre-eco invertido que anticipa la voz)
-    combinado con Slap-Eco estéreo en el arranque del locutor.
-  - VERIFICADOR DE NOTICIAS RSS: Anti-caché, sin duplicar el título en la bajada y con rotación real.
-  - SALIDA FINAL PULIDA: La cortina musical baja progresivamente antes del remate final para que el último eco/slow
-    del locutor quede flotando limpio sobre el acorde de cierre.
+Mejoras clave de esta versión:
+  - CORTINAS AUDIBLES Y PRESENTES: Se subió el nivel de la base de Noticias y Clima (-8.0 dB) con radar informativo
+    estéreo y ducking suave (-3.2 dB) para que el fondo se sienta constante sin tapar la claridad de la voz.
+  - TRANSICIÓN CLIMA -> NOTICIAS AL FRENTE: 4 separadores distintos que suenan en su propio espacio limpio sin pisarse con la voz.
+  - 4 INTROS 100% DIFERENTES: Dial Tuning + Pips, Urbana Wah Groove, Cyber Glitch Stutter y Stadium Arena Roll.
+  - VOZ CON REVERB FM + EFECTO DE ENTRADA: Reverb Plate de estudio en toda la voz + efecto FM en el arranque ("Escuchás Nogaradio").
+  - ECO FINAL VARIADO + SALIDA LENTA LIMPIA: Combina el Eco Ping-Pong con Slow Grave, Phaser FM y Stutter, mientras
+    la música continúa 3 segundos más y baja despacito en un fade-out sedoso.
 """
 
 import glob
@@ -54,12 +54,13 @@ ASSETS_DIR = "assets"
 EXTENSIONES = (".mp3", ".wav", ".ogg", ".m4a", ".flac")
 SR = 44100
 
-REFERENCIA_RMS_DB = -19.0
-EFECTOS_DB = -2.2
-AMBIENTE_DB = -12.0
-TICKER_NOTICIAS_DB = -12.5
-CAMA_DB_LIBRE = -5.0
-CAMA_DB_VOZ = -13.5
+# Niveles de mezcla calibrados para que se sientan bien las cortinas y las transiciones
+REFERENCIA_RMS_DB = -18.5
+EFECTOS_DB = -0.8          # Intros, Transiciones y Cierres bien al frente
+AMBIENTE_DB = -8.2         # Cortina de clima bien presente debajo de la voz
+TICKER_NOTICIAS_DB = -8.0  # Cortina de noticias bien audible mientras dicta los titulares
+CAMA_DB_LIBRE = -4.5
+CAMA_DB_VOZ = -10.5
 
 # ---------------------------------------------------------------------------
 # Diccionarios y Funciones de Tiempo
@@ -152,11 +153,11 @@ def obtener_clima(reintentos: int = 3, espera: int = 5) -> dict | None:
 
 
 FRASES_PASE_NOTICIAS = [
-    "No te muevas, ya llegan los titulares.",
-    "Quedate ahí, actualizamos las noticias.",
-    "Seguí con nosotros, vamos al flash informativo.",
+    "No te muevas, ya llegan las noticias.",
+    "Quedate ahí, vamos al flash informativo.",
+    "Seguí con nosotros, actualizamos los titulares.",
     "Subí el volumen, ya llega la información.",
-    "Seguimos conectados, vamos a las noticias.",
+    "Seguimos conectados, pasamos a las noticias.",
 ]
 
 PLANTILLAS_CLIMA = [
@@ -265,7 +266,7 @@ def obtener_titular_verificado(lista_feeds: list[str], cantidad: int = 20) -> st
     for url_base in lista_feeds:
         try:
             sep = "&" if "?" in url_base else "?"
-            url_fresca = f"{url_base}{sep}_t={int(time.time() // 180)}"
+            url_fresca = f"{url_base}{sep}_t={int(time.time() // 120)}"
             headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
                 "Accept": "application/rss+xml, application/xml, text/xml, */*",
@@ -316,7 +317,7 @@ FRASES_CIERRE_NOGARADIO = [
 
 def armar_texto_noticias(titular_mundo: str | None, titular_musica: str | None) -> str:
     cierre = random.choice(FRASES_CIERRE_NOGARADIO)
-    intro_mundo = random.choice(["En las noticias internacionales:", "Actualidad internacional:", "En el plano internacional:"])
+    intro_mundo = random.choice(["Flash internacional:", "Actualidad internacional:", "En el plano internacional:"])
     intro_musica = random.choice(["Y en la música:", "Pasando a la música:", "En novedades musicales:"])
 
     if titular_mundo and titular_musica:
@@ -329,7 +330,7 @@ def armar_texto_noticias(titular_mundo: str | None, titular_musica: str | None) 
 
 
 # ---------------------------------------------------------------------------
-# Motor DSP + Efectos Vocales Estilo Urbana Play / La 100
+# Motor DSP + Efectos Vocales de Estudio FM
 # ---------------------------------------------------------------------------
 
 def seg_a_array(seg: AudioSegment) -> np.ndarray:
@@ -413,8 +414,9 @@ def _filtrar(x: np.ndarray, pasa_altos: float | None = None, pasa_bajos: float |
 
 
 def _hueco_vocal_cortina(x: np.ndarray) -> np.ndarray:
-    medios_voz = _filtrar(x, pasa_altos=900, pasa_bajos=3400, orden=2)
-    return x - medios_voz * 0.48
+    """Bolsillo suave en 1.5kHz-3kHz para que la voz sea clara pero la cortina se sienta potente."""
+    medios_voz = _filtrar(x, pasa_altos=1400, pasa_bajos=3000, orden=2)
+    return x - medios_voz * 0.25
 
 
 def _comprimir(x: np.ndarray, thr_db: float = -20.0, ratio: float = 3.0,
@@ -453,13 +455,9 @@ def _recortar_silencio(x: np.ndarray, umbral: float = 0.018) -> np.ndarray:
 
 
 def _extraer_ultima_palabra(x: np.ndarray) -> np.ndarray:
-    """
-    Escanea la voz hacia atrás buscando el valle de silencio entre las últimas palabras
-    para nunca cortar una sílaba o vocal a la mitad.
-    """
     n = len(x)
-    min_muestras = int(SR * 0.28)
-    max_muestras = min(int(SR * 0.62), n // 2)
+    min_muestras = int(SR * 0.30)
+    max_muestras = min(int(SR * 0.65), n // 2)
     if max_muestras <= min_muestras:
         return _fade(x[-min_muestras:].copy(), 35, 35)
 
@@ -474,8 +472,7 @@ def _extraer_ultima_palabra(x: np.ndarray) -> np.ndarray:
     return _fade(trozo, 30, 40)
 
 
-def _estirar_pitch_slow(trozo: np.ndarray, factor: float = 1.28) -> np.ndarray:
-    """Efecto Slow / Pitch-Down limpio con apertura estéreo."""
+def _estirar_pitch_slow(trozo: np.ndarray, factor: float = 1.30) -> np.ndarray:
     n_orig = len(trozo)
     n_nuevo = int(n_orig * factor)
     idx_orig = np.arange(n_orig)
@@ -483,140 +480,200 @@ def _estirar_pitch_slow(trozo: np.ndarray, factor: float = 1.28) -> np.ndarray:
     l = np.interp(idx_nuevo, idx_orig, trozo[:, 0])
     r = np.interp(idx_nuevo, idx_orig, trozo[:, 1])
 
-    d = int(SR * 0.012)
+    d = int(SR * 0.014)
     r_w = np.pad(r, (d, 0))[:n_nuevo]
     out = np.column_stack((l, r_w))
-    return _fade(_filtrar(out, pasa_altos=85, pasa_bajos=3200), 40, 80)
+    return _fade(_filtrar(out, pasa_altos=80, pasa_bajos=3000), 40, 80)
+
+
+def _phaser_estereo_fx(x: np.ndarray) -> np.ndarray:
+    """Efecto Phaser/Flanger espacial de radio FM para las colas de voz y entradas."""
+    t = np.arange(len(x)) / SR
+    mod_l = 0.5 + 0.5 * np.sin(2 * np.pi * 1.4 * t)
+    mod_r = 0.5 + 0.5 * np.cos(2 * np.pi * 1.4 * t)
+    alto = _filtrar(x, pasa_altos=600, pasa_bajos=2200)
+    bajo = _filtrar(x, pasa_altos=1800, pasa_bajos=4800)
+    out = x * 0.6 + np.column_stack((
+        alto[:, 0] * mod_l + bajo[:, 0] * (1 - mod_l),
+        alto[:, 1] * mod_r + bajo[:, 1] * (1 - mod_r)
+    )) * 0.55
+    return out
 
 
 def aplicar_fx_entrada_voz(x: np.ndarray) -> tuple[np.ndarray, float, str]:
     """
-    Efecto de Entrada Vocal estilo Urbana Play / La 100:
-    Genera una anticipación antes de que empiece a hablar el locutor (Reverse Vocal Swell o Slap-Tap Estéreo).
+    Aplica un efecto FM bien audible al comienzo de la locución (sobre 'Escuchás Nogaradio...' / 'Flash internacional:')
+    variando entre 4 estilos clásicos de radio moderna.
     """
-    modo = random.choice(["reverse_ghost_swell", "slap_throw_intro", "reverse_mas_eco"])
-    n_frase_ini = min(int(SR * 0.36), len(x) // 3)
-    primera_silaba = _fade(x[:n_frase_ini].copy(), 25, 40)
+    modo = random.choice(["reverse_suction_echo", "megaphone_open_fm", "voice_octaver_throw", "phaser_slap_intro"])
+    n_frase = min(int(SR * 1.05), len(x) // 3)
+    n_silaba = min(int(SR * 0.42), len(x) // 4)
+    primera_silaba = _fade(x[:n_silaba].copy(), 25, 45)
 
-    if modo == "reverse_ghost_swell":
+    if modo == "reverse_suction_echo":
+        # Aspiración vocal invertida bien clara (420ms) + Eco Ping-Pong sobre la primera palabra
         rev = primera_silaba[::-1].copy()
-        rev = _filtrar(rev, pasa_altos=350, pasa_bajos=3600)
-        rev = _reverb_estereo(rev, seg=0.65, mezcla=0.65, brillo=4000)[: len(rev)]
-        t_r = np.linspace(0.0, 1.0, len(rev))
-        curva = (t_r ** 2.2)[:, None]
-        pan_l = 0.2 + 0.8 * t_r
-        pan_r = 1.0 - 0.6 * t_r
-        swell = np.column_stack((rev[:, 0] * pan_l, rev[:, 1] * pan_r)) * curva * 0.55
-        swell = _fade(swell, 30, 15)
-
-        pre_ms = _dur_ms(swell)
-        salida = np.vstack((swell, x))
-        return salida, pre_ms, "Reverse Vocal Swell (Urbana Play Style)"
-
-    elif modo == "slap_throw_intro":
-        eco_ini = _filtrar(primera_silaba, pasa_altos=450, pasa_bajos=3400) * 0.36
-        salida = x.copy()
-        for rep, (pos_ms, c) in enumerate([(220, 0), (440, 1)], start=1):
-            i = int(SR * pos_ms / 1000)
-            fin = min(len(salida), i + len(eco_ini))
-            if fin > i:
-                gan = 0.65 ** rep
-                salida[i:fin, c] += eco_ini[: fin - i, c] * gan
-                salida[i:fin, 1 - c] += eco_ini[: fin - i, 1 - c] * gan * 0.25
-        return salida, 0.0, "Stereo Slap-Intro (La 100 Style)"
-
-    else:
-        rev = _filtrar(primera_silaba[: int(SR * 0.28)][::-1].copy(), pasa_altos=400, pasa_bajos=3500)
-        curva = (np.linspace(0.0, 1.0, len(rev)) ** 2.4)[:, None]
-        swell = _fade(rev * curva * 0.48, 25, 12)
-        pre_ms = _dur_ms(swell)
+        rev = _filtrar(rev, pasa_altos=300, pasa_bajos=3800)
+        rev = _reverb_estereo(rev, seg=0.85, mezcla=0.70, brillo=4200)[: len(rev)]
+        curva = (np.linspace(0.0, 1.0, len(rev)) ** 2.0)[:, None]
+        swell = _fade(_pico(rev * curva, 0.72), 30, 15)
 
         cuerpo = x.copy()
-        eco_ini = _filtrar(primera_silaba, pasa_altos=450, pasa_bajos=3200) * 0.32
-        i_eco = int(SR * 0.24)
-        fin = min(len(cuerpo), i_eco + len(eco_ini))
+        eco = _filtrar(primera_silaba, pasa_altos=420, pasa_bajos=3400) * 0.48
+        for pos_ms, c in [(240, 0), (480, 1)]:
+            i = int(SR * pos_ms / 1000)
+            fin = min(len(cuerpo), i + len(eco))
+            if fin > i:
+                cuerpo[i:fin, c] += eco[: fin - i, c]
+        return np.vstack((swell, cuerpo)), _dur_ms(swell), "Reverse Suction + Eco FM"
+
+    elif modo == "megaphone_open_fm":
+        # El primer segundo ("Escuchás Nogaradio") sale con filtro Radio/Megáfono FM + Phaser y luego abre a voz HD
+        cuerpo = x.copy()
+        tramo = cuerpo[:n_frase].copy()
+        radio_fx = np.tanh(_filtrar(tramo, pasa_altos=520, pasa_bajos=2800) * 2.4) * 0.68
+        radio_fx = _phaser_estereo_fx(radio_fx)
+        trans_len = int(SR * 0.25)
+        mezcla_curva = np.ones(n_frase)
+        if n_frase > trans_len:
+            mezcla_curva[-trans_len:] = np.linspace(1.0, 0.0, trans_len)
+        cuerpo[:n_frase] = tramo * (1.0 - 0.75 * mezcla_curva[:, None]) + radio_fx * (0.85 * mezcla_curva[:, None])
+        return cuerpo, 0.0, "Filtro Radio FM Open-Up"
+
+    elif modo == "voice_octaver_throw":
+        # Agrega una voz grave paralela (Sub-Octaver/Pitch-Down) debajo de la marca inicial + Eco largo
+        cuerpo = x.copy()
+        tramo_grave = _estirar_pitch_slow(primera_silaba, factor=1.22)[:n_silaba]
+        cuerpo[: len(tramo_grave)] += tramo_grave * 0.42
+        eco = _reverb_estereo(_filtrar(primera_silaba, pasa_altos=400, pasa_bajos=3500), seg=1.0, mezcla=0.5)[: len(primera_silaba)]
+        i_eco = int(SR * 0.26)
+        fin = min(len(cuerpo), i_eco + len(eco))
         if fin > i_eco:
-            cuerpo[i_eco:fin, 1] += eco_ini[: fin - i_eco, 1]
-        return np.vstack((swell, cuerpo)), pre_ms, "Reverse Swell + Stereo Tap"
+            cuerpo[i_eco:fin, 0] += eco[: fin - i_eco, 0] * 0.45
+            cuerpo[i_eco:fin, 1] += eco[: fin - i_eco, 1] * 0.25
+        return cuerpo, 0.0, "Vocal Doubler Grave + Throw"
+
+    else:
+        # Pre-Swell corto + Eco con Phaser espacial estéreo en el arranque
+        rev = _filtrar(primera_silaba[: int(SR * 0.32)][::-1].copy(), pasa_altos=380, pasa_bajos=3600)
+        curva = (np.linspace(0.0, 1.0, len(rev)) ** 2.2)[:, None]
+        swell = _fade(_pico(rev * curva, 0.65), 25, 12)
+
+        cuerpo = x.copy()
+        eco_ph = _phaser_estereo_fx(_filtrar(primera_silaba, pasa_altos=400, pasa_bajos=3600)) * 0.46
+        for pos_ms, c in [(230, 1), (460, 0)]:
+            i = int(SR * pos_ms / 1000)
+            fin = min(len(cuerpo), i + len(eco_ph))
+            if fin > i:
+                cuerpo[i:fin, c] += eco_ph[: fin - i, c]
+        return np.vstack((swell, cuerpo)), _dur_ms(swell), "Phaser Slap Intro + Swell"
 
 
 def aplicar_fx_final_voz(x: np.ndarray, es_cierre_final: bool = True) -> tuple[np.ndarray, str]:
     """
-    Aplica efectos finales de FM sobre la última palabra detectada SIN modificar ni cortar jamás la voz original.
+    Mantiene el Eco Ping-Pong limpio que gustó y lo combina con variaciones de radio FM:
+      1) Eco Ping-Pong + Reverb Hall
+      2) Eco Ping-Pong + Rebote final en Slow Grave (Pitch-Down)
+      3) Eco Ping-Pong con Phaser Espacial FM
+      4) Stutter Digital + Eco Ping-Pong
     """
     if es_cierre_final:
-        opciones = ["eco_pingpong_pro", "slow_pitch_tail", "stutter_tail_eco", "radio_throw_delay"]
+        opciones = ["eco_pingpong_hall", "eco_mas_slow_grave", "eco_phaser_fm", "stutter_mas_eco"]
     else:
-        opciones = ["eco_pingpong_pro", "radio_throw_delay"]
+        opciones = ["eco_pingpong_hall", "eco_phaser_fm"]
 
     modo_fx = random.choice(opciones)
 
     palabra_final = _extraer_ultima_palabra(x)
-    palabra_eq = _filtrar(palabra_final, pasa_altos=380, pasa_bajos=3300)
-    palabra_rev = _reverb_estereo(palabra_eq, seg=0.9, mezcla=0.35, brillo=3800)[: len(palabra_eq)]
+    palabra_eq = _filtrar(palabra_final, pasa_altos=360, pasa_bajos=3400)
+    palabra_rev = _reverb_estereo(palabra_eq, seg=1.1, mezcla=0.42, brillo=4000)[: len(palabra_eq)]
 
-    if modo_fx == "eco_pingpong_pro":
-        cola_ms = 1350
+    if modo_fx == "eco_pingpong_hall":
+        cola_ms = 1450
         out = np.pad(x, ((0, int(SR * cola_ms / 1000)), (0, 0)))
         paso_ms = 260.0
-        base_ms = _dur_ms(x) - 35.0
+        base_ms = _dur_ms(x) - 30.0
 
         for rep in range(1, 5):
             pos_ms = base_ms + (rep - 1) * paso_ms
-            gan = 0.54 ** rep
+            gan = 0.56 ** rep
             tramo = np.zeros_like(palabra_rev)
             c = rep % 2
             tramo[:, c] = palabra_rev[:, c] * 0.95
-            tramo[:, 1 - c] = palabra_rev[:, 1 - c] * 0.25
+            tramo[:, 1 - c] = palabra_rev[:, 1 - c] * 0.28
             _sumar(out, tramo, pos_ms, gan)
-        return out, "Eco Ping-Pong Estéreo Limpio"
+        return out, "Eco Ping-Pong Hall"
 
-    elif modo_fx == "slow_pitch_tail":
-        palabra_slow = _estirar_pitch_slow(palabra_final, factor=1.28)
-        palabra_slow = _reverb_estereo(palabra_slow, seg=0.8, mezcla=0.30)[: len(palabra_slow)]
-        cola_ms = _dur_ms(palabra_slow) + 650.0
+    elif modo_fx == "eco_mas_slow_grave":
+        # Hace 2 ecos ping-pong normales y el 3er rebote cae en cámara lenta grave (Slow Pitch-Down)
+        palabra_slow = _estirar_pitch_slow(palabra_final, factor=1.30)
+        palabra_slow = _reverb_estereo(palabra_slow, seg=1.0, mezcla=0.38)[: len(palabra_slow)]
+        cola_ms = 1550
         out = np.pad(x, ((0, int(SR * cola_ms / 1000)), (0, 0)))
+        base_ms = _dur_ms(x) - 25.0
 
-        pos_1 = _dur_ms(x) + 30.0
-        _sumar(out, palabra_slow, pos_1, 0.68)
-        _sumar(out, _filtrar(palabra_slow, pasa_bajos=2000), pos_1 + 310.0, 0.34)
-        return out, "Slow Pitch-Down Tail + Eco"
+        # Rebote 1 (Izq) y Rebote 2 (Der)
+        for rep, c in [(1, 0), (2, 1)]:
+            pos_ms = base_ms + (rep - 1) * 250.0
+            tramo = np.zeros_like(palabra_rev)
+            tramo[:, c] = palabra_rev[:, c] * 0.95
+            tramo[:, 1 - c] = palabra_rev[:, 1 - c] * 0.25
+            _sumar(out, tramo, pos_ms, 0.55 ** rep)
 
-    elif modo_fx == "stutter_tail_eco":
+        # Rebote 3 en Slow-Motion grave al centro/estéreo
+        _sumar(out, palabra_slow, base_ms + 500.0, 0.52)
+        return out, "Eco Ping-Pong + Remate Slow Grave"
+
+    elif modo_fx == "eco_phaser_fm":
+        # El eco pasa por un Phaser espacial y filtro de radio FM
+        palabra_ph = _phaser_estereo_fx(palabra_rev)
+        palabra_ph = np.tanh(_filtrar(palabra_ph, pasa_altos=450, pasa_bajos=2900) * 1.6) * 0.75
+        cola_ms = 1400
+        out = np.pad(x, ((0, int(SR * cola_ms / 1000)), (0, 0)))
+        base_ms = _dur_ms(x) - 30.0
+
+        for rep in range(1, 5):
+            pos_ms = base_ms + (rep - 1) * 255.0
+            gan = 0.56 ** rep
+            tramo = np.zeros_like(palabra_ph)
+            c = (rep + 1) % 2
+            tramo[:, c] = palabra_ph[:, c] * 0.95
+            tramo[:, 1 - c] = palabra_ph[:, 1 - c] * 0.30
+            _sumar(out, tramo, pos_ms, gan)
+        return out, "Eco Phaser Espacial FM"
+
+    else:
+        # "stutter_mas_eco": 2 micro-repeticiones rítmicas + 3 rebotes de eco ping-pong
         n_sil = min(int(SR * 0.12), len(palabra_eq) // 2)
         sil = _fade(palabra_eq[:n_sil].copy(), 12, 18)
         s_l = np.column_stack((sil[:, 0] * 0.9, sil[:, 1] * 0.2))
         s_r = np.column_stack((sil[:, 0] * 0.2, sil[:, 1] * 0.9))
 
-        cola_ms = 1250
+        cola_ms = 1500
         out = np.pad(x, ((0, int(SR * cola_ms / 1000)), (0, 0)))
-        fin_ms = _dur_ms(x) + 20.0
-        _sumar(out, s_l, fin_ms, 0.62)
-        _sumar(out, s_r, fin_ms + 130.0, 0.55)
-        _sumar(out, palabra_rev, fin_ms + 260.0, 0.48)
-        _sumar(out, _filtrar(palabra_rev, pasa_bajos=2400), fin_ms + 520.0, 0.26)
-        return out, "Stutter Digital Tail + Eco"
-
-    else:
-        palabra_radio = np.tanh(_filtrar(palabra_final, pasa_altos=520, pasa_bajos=2500) * 2.0) * 0.55
-        palabra_radio = _reverb_estereo(palabra_radio, seg=1.1, mezcla=0.45)[: len(palabra_radio)]
-        cola_ms = 1200
-        out = np.pad(x, ((0, int(SR * cola_ms / 1000)), (0, 0)))
-        base_ms = _dur_ms(x) - 20.0
-        for rep, offset in enumerate([0.0, 270.0, 540.0], start=1):
-            _sumar(out, palabra_radio, base_ms + offset, 0.55 ** rep)
-        return out, "Filtro Radio Throw Delay"
+        fin_ms = _dur_ms(x) + 15.0
+        _sumar(out, s_l, fin_ms, 0.60)
+        _sumar(out, s_r, fin_ms + 125.0, 0.55)
+        for rep in range(1, 4):
+            pos_ms = fin_ms + 250.0 + (rep - 1) * 250.0
+            c = rep % 2
+            tramo = np.zeros_like(palabra_rev)
+            tramo[:, c] = palabra_rev[:, c] * 0.95
+            tramo[:, 1 - c] = palabra_rev[:, 1 - c] * 0.25
+            _sumar(out, tramo, pos_ms, 0.52 ** rep)
+        return out, "Stutter Digital + Eco Ping-Pong"
 
 
-def _ducking_por_voz(fondo: np.ndarray, pista_voz: np.ndarray, reduccion_db: float = -6.5) -> np.ndarray:
+def _ducking_por_voz(fondo: np.ndarray, pista_voz: np.ndarray, reduccion_db: float = -3.2) -> np.ndarray:
+    """Ducking suave (-3.2 dB) para que la música y el ticker de noticias se sientan siempre presentes."""
     n = min(len(fondo), len(pista_voz))
     blk = int(SR * 0.015)
     nb = n // blk + 1
     env = np.pad(np.abs(pista_voz[:n]).max(axis=1), (0, nb * blk - n)).reshape(nb, blk).max(axis=1)
-    hablando = (env > 0.035).astype(np.float64)
+    hablando = (env > 0.04).astype(np.float64)
 
-    a = np.exp(-15.0 / 20.0)
-    r = np.exp(-15.0 / 260.0)
+    a = np.exp(-15.0 / 25.0)
+    r = np.exp(-15.0 / 240.0)
     suave = np.zeros(nb)
     val = 0.0
     for i in range(nb):
@@ -651,7 +708,7 @@ def _reverb_estereo(x: np.ndarray, seg: float = 1.2, mezcla: float = 0.30, brill
     rng = np.random.default_rng(99)
     ir = rng.standard_normal((ir_n, 2)) * np.exp(-6.0 * t / seg)[:, None]
     ir = _filtrar(ir, pasa_altos=200, pasa_bajos=brillo)
-    predelay = int(SR * 0.020)
+    predelay = int(SR * 0.022)
     ir = np.pad(ir, ((predelay, 0), (0, 0)))[:ir_n]
     ir /= (np.sqrt(np.sum(ir ** 2, axis=0, keepdims=True)) + 1e-9)
 
@@ -682,46 +739,46 @@ def _synth_brass(freqs: list[float], dur_ms: float, corte_lp: float = 3600.0) ->
     env = np.exp(-2.0 * t)
     env[:ataque] *= np.linspace(0.1, 1.0, ataque)
     out = _filtrar(out * env[:, None], pasa_altos=95, pasa_bajos=corte_lp)
-    return np.tanh(out * 0.45) * 0.36
+    return np.tanh(out * 0.45) * 0.38
 
 
 def _pop_pluck(freq: float, dur_ms: float = 240, pan: float = 0.5) -> np.ndarray:
     t = _t(dur_ms)
-    mod = 2.2 * np.exp(-t * 28.0) * np.sin(2 * np.pi * (freq * 2.0) * t)
-    onda = np.sin(2 * np.pi * freq * t + mod) + 0.35 * np.sin(2 * np.pi * (freq * 0.5) * t)
-    env = np.exp(-t * 11.0)
+    mod = 2.4 * np.exp(-t * 26.0) * np.sin(2 * np.pi * (freq * 2.0) * t)
+    onda = np.sin(2 * np.pi * freq * t + mod) + 0.38 * np.sin(2 * np.pi * (freq * 0.5) * t)
+    env = np.exp(-t * 10.0)
     ataque = min(int(SR * 0.003), len(t))
     env[:ataque] *= np.linspace(0, 1, ataque)
-    mono = onda * env * 0.32
+    mono = onda * env * 0.36
     return np.column_stack((mono * pan, mono * (1.0 - pan)))
 
 
 def _funky_bass(freq: float, dur_ms: float) -> np.ndarray:
     t = _t(dur_ms)
-    mod = 1.6 * np.exp(-t * 22.0) * np.sin(2 * np.pi * (freq * 2.0) * t)
+    mod = 1.8 * np.exp(-t * 20.0) * np.sin(2 * np.pi * (freq * 2.0) * t)
     sub = np.sin(2 * np.pi * freq * t + mod)
-    arm = 0.35 * np.sin(2 * np.pi * (freq * 2.0) * t) * np.exp(-t * 10.0)
-    env = np.exp(-4.0 * t)
+    arm = 0.40 * np.sin(2 * np.pi * (freq * 2.0) * t) * np.exp(-t * 10.0)
+    env = np.exp(-3.8 * t)
     ataque = min(int(SR * 0.006), len(t))
     env[:ataque] *= np.linspace(0, 1, ataque)
-    return _est(np.tanh((sub + arm) * env * 1.5) * 0.40)
+    return _est(np.tanh((sub + arm) * env * 1.6) * 0.44)
 
 
 def _kick_punch(dur_ms: float = 240) -> np.ndarray:
     t = _t(dur_ms)
-    f_env = 48.0 + 140.0 * np.exp(-t * 42.0)
+    f_env = 48.0 + 145.0 * np.exp(-t * 42.0)
     fase = 2 * np.pi * np.cumsum(f_env) / SR
-    cuerpo = np.tanh(np.sin(fase) * 1.8) * np.exp(-t * 11.0)
+    cuerpo = np.tanh(np.sin(fase) * 1.8) * np.exp(-t * 10.5)
     click = _filtrar(np.random.uniform(-1, 1, (len(t), 2)), pasa_altos=1000, pasa_bajos=4500)
-    click *= np.exp(-t * 110.0)[:, None] * 0.22
-    return _est(cuerpo * 0.85) + click
+    click *= np.exp(-t * 110.0)[:, None] * 0.24
+    return _est(cuerpo * 0.88) + click
 
 
 def _snare_pop(dur_ms: float = 190) -> np.ndarray:
     t = _t(dur_ms)
-    tono = np.sin(2 * np.pi * 185.0 * t) * np.exp(-t * 28.0) * 0.4
+    tono = np.sin(2 * np.pi * 185.0 * t) * np.exp(-t * 28.0) * 0.42
     ruido = _filtrar(np.random.uniform(-1, 1, (len(t), 2)), pasa_altos=700, pasa_bajos=7500)
-    ruido *= np.exp(-t * 20.0)[:, None] * 0.32
+    ruido *= np.exp(-t * 20.0)[:, None] * 0.35
     return _est(tono) + ruido
 
 
@@ -730,7 +787,7 @@ def _hihat_crisp(dur_ms: float = 65, abierto: bool = False) -> np.ndarray:
     t = _t(dur)
     ruido = _filtrar(np.random.uniform(-1, 1, (len(t), 2)), pasa_altos=6500, pasa_bajos=13500)
     env = np.exp(-t * (14.0 if abierto else 50.0))
-    return ruido * env[:, None] * (0.20 if abierto else 0.14)
+    return ruido * env[:, None] * (0.22 if abierto else 0.16)
 
 
 def _whoosh_aerodinamico(dur_ms: float = 700, f_ini: float = 250.0, f_fin: float = 4800.0) -> np.ndarray:
@@ -739,133 +796,194 @@ def _whoosh_aerodinamico(dur_ms: float = 700, f_ini: float = 250.0, f_fin: float
     ruido = _filtrar(np.random.uniform(-1, 1, (len(t), 2)), pasa_altos=300, pasa_bajos=7500)
     f_curva = f_ini * ((f_fin / f_ini) ** (prog ** 1.6))
     fase = 2 * np.pi * np.cumsum(f_curva) / SR
-    tono = np.sin(fase) * 0.24
+    tono = np.sin(fase) * 0.26
     env = np.sin(np.pi * (prog ** 1.3)) ** 2
-    pan_l = 0.15 + 0.85 * prog
-    pan_r = 1.0 - 0.85 * prog
-    out = (ruido * 0.60 + np.column_stack((tono * pan_l, tono * pan_r))) * env[:, None]
-    return _pico(out, 0.85)
+    pan_l = 0.10 + 0.90 * prog
+    pan_r = 1.0 - 0.90 * prog
+    out = (ruido * 0.65 + np.column_stack((tono * pan_l, tono * pan_r))) * env[:, None]
+    return _pico(out, 0.88)
 
 
 def _sub_drop_cine(dur_ms: float = 1200) -> np.ndarray:
     t = _t(dur_ms)
-    f_curva = 32.0 + 80.0 * np.exp(-t * 7.5)
+    f_curva = 32.0 + 85.0 * np.exp(-t * 7.5)
     fase = 2 * np.pi * np.cumsum(f_curva) / SR
-    onda = np.tanh(np.sin(fase) * 1.7) * np.exp(-t * 2.5)
-    return _est(onda * 0.80)
+    onda = np.tanh(np.sin(fase) * 1.8) * np.exp(-t * 2.4)
+    return _est(onda * 0.85)
 
 
 def _laser_drop(dur_ms: float = 420) -> np.ndarray:
     t = _t(dur_ms)
-    f_curva = 65.0 + 3000.0 * np.exp(-t * 15.0)
+    f_curva = 65.0 + 3200.0 * np.exp(-t * 14.0)
     fase = 2 * np.pi * np.cumsum(f_curva) / SR
-    onda = np.tanh(np.sin(fase) * 1.5) * np.exp(-t * 6.0)
-    return _est(onda * 0.50)
+    onda = np.tanh(np.sin(fase) * 1.6) * np.exp(-t * 5.5)
+    return _est(onda * 0.58)
+
+
+def _radio_tuning_dial(dur_ms: float = 750) -> np.ndarray:
+    t = _t(dur_ms)
+    prog = t / (dur_ms / 1000.0)
+    f_dial = 650.0 + 1900.0 * np.sin(2 * np.pi * 4.0 * prog) + 2000.0 * (prog ** 2)
+    fase = 2 * np.pi * np.cumsum(f_dial) / SR
+    silbido = np.sin(fase) * 0.25
+    estatica = _filtrar(np.random.uniform(-1, 1, (len(t), 2)), pasa_altos=900, pasa_bajos=6000) * 0.28
+    return _fade(estatica + _est(silbido), 30, 40)
 
 
 # ---------------------------------------------------------------------------
-# Sweepers Variables (Intro, Transición y Cierre Final Pulido)
+# 4 Intros Radicalmente Distintas y 4 Transiciones Notorias
 # ---------------------------------------------------------------------------
 
 def sintetizar_intro() -> np.ndarray:
-    estilo = random.choice(["urbana_swell_chime", "la100_pips_modern", "electro_fm_drop"])
+    """Sortea entre 4 diseños de Intro totalmente diferentes en ritmo, timbre y efectos."""
+    estilo = random.choice(["dial_tuning_pips", "urbana_wah_groove", "cyber_glitch_stutter", "stadium_arena_hit"])
     print(f"Estilo de Intro FM elegido: [{estilo}]")
     pista = _pista(2800)
 
-    if estilo == "la100_pips_modern":
-        _sumar(pista, _whoosh_aerodinamico(780, 250, 5000), 20, 0.85)
+    if estilo == "dial_tuning_pips":
+        # 1) Sintonía de Dial de Radio + 4 Pips Horarios + Laser Drop + Fanfarria Aguda
+        _sumar(pista, _radio_tuning_dial(760), 0, 0.80)
         for i, pos in enumerate([120, 340, 560, 780]):
             es_ultimo = (i == 3)
             dur = 300 if es_ultimo else 70
             freq = 1760.0 if es_ultimo else 880.0
             t = _t(dur)
-            pip = (np.sin(2 * np.pi * freq * t) + 0.3 * np.sin(2 * np.pi * freq * 2 * t)) * np.exp(-t * (6.0 if es_ultimo else 22.0))
-            _sumar(pista, _est(pip * 0.38), pos)
+            pip = (np.sin(2 * np.pi * freq * t) + 0.35 * np.sin(2 * np.pi * freq * 2 * t)) * np.exp(-t * (6.0 if es_ultimo else 22.0))
+            _sumar(pista, _est(pip * 0.45), pos)
 
-        _sumar(pista, _sub_drop_cine(1300), 780, 0.90)
+        _sumar(pista, _laser_drop(420), 780, 0.85)
         _sumar(pista, _kick_punch(260), 800, 1.0)
         _sumar(pista, _synth_brass([220.0, 261.63, 329.63, 392.00, 493.88], 1600), 800, 0.90)
-        notas = [880.0, 1046.50, 1318.51, 1567.98, 1760.0]
+        notas = [(880.0, 0, 0.2), (1046.50, 100, 0.8), (1318.51, 200, 0.25), (1567.98, 300, 0.75), (1760.0, 400, 0.5)]
 
-    elif estilo == "urbana_swell_chime":
-        _sumar(pista, _whoosh_aerodinamico(750, 300, 4200), 50, 0.80)
-        _sumar(pista, _sub_drop_cine(1400), 780, 0.95)
-        _sumar(pista, _kick_punch(260), 800, 1.0)
-        _sumar(pista, _kick_punch(240), 1040, 0.85)
-        _sumar(pista, _synth_brass([174.61, 220.0, 261.63, 329.63, 392.00], 1700), 800, 0.90)
-        notas = [1046.50, 1318.51, 1567.98, 1318.51, 1760.0]
+    elif estilo == "urbana_wah_groove":
+        # 2) Barrido de Filtro Wah-Wah sobre Acorde House + Groove de Batería Sincopado + Campanas graves/agudas
+        acorde_wah = _synth_brass([174.61, 220.0, 261.63, 329.63, 392.00], 800, corte_lp=3800)
+        acorde_wah = _phaser_estereo_fx(acorde_wah) * (np.linspace(0.2, 1.0, len(acorde_wah))[:, None])
+        _sumar(pista, acorde_wah, 0, 0.85)
+        for pos_k in [0, 260, 520, 800, 1050]:
+            _sumar(pista, _kick_punch(220), pos_k, 0.95)
+        _sumar(pista, _snare_pop(180), 400, 0.85)
+        _sumar(pista, _snare_pop(180), 800, 0.95)
+        _sumar(pista, _sub_drop_cine(1300), 800, 0.95)
+        _sumar(pista, _synth_brass([196.0, 246.94, 293.66, 392.0, 493.88], 1650), 800, 0.90)
+        notas = [(783.99, 0, 0.7), (987.77, 130, 0.3), (1174.66, 260, 0.7), (1567.98, 390, 0.5)]
+
+    elif estilo == "cyber_glitch_stutter":
+        # 3) Ráfaga de Glitch Digital paneado L/R + Whoosh inverso + Doble Sub-Drop + Riff Electrónico
+        freqs_g = [1400, 2100, 1050, 2800, 1600, 3200, 1200, 2400]
+        for idx_g, pos_g in enumerate(range(0, 720, 90)):
+            t_g = _t(55)
+            bip = np.sin(2 * np.pi * freqs_g[idx_g % len(freqs_g)] * t_g) * np.hanning(len(t_g)) * 0.38
+            c_l = 0.9 if idx_g % 2 == 0 else 0.1
+            _sumar(pista, np.column_stack((bip * c_l, bip * (1.0 - c_l))), pos_g)
+        _sumar(pista, _whoosh_aerodinamico(780, 200, 5800), 20, 0.85)
+        _sumar(pista, _sub_drop_cine(1400), 780, 1.0)
+        _sumar(pista, _laser_drop(380), 780, 0.80)
+        _sumar(pista, _synth_brass([164.81, 196.0, 246.94, 293.66, 369.99], 1600), 800, 0.90)
+        notas = [(1318.51, 0, 0.2), (987.77, 90, 0.8), (1174.66, 180, 0.3), (1567.98, 270, 0.7), (1975.53, 360, 0.5)]
 
     else:
-        _sumar(pista, _whoosh_aerodinamico(800, 180, 5600), 0, 0.88)
-        _sumar(pista, _laser_drop(400), 760, 0.78)
-        _sumar(pista, _sub_drop_cine(1300), 780, 0.95)
-        _sumar(pista, _kick_punch(260), 800, 1.0)
-        _sumar(pista, _synth_brass([164.81, 196.0, 246.94, 293.66, 369.99], 1600), 800, 0.90)
-        notas = [659.25, 783.99, 987.77, 1174.66, 1318.51]
+        # 4) Redoble de Batería de Estadio ("Stadium Arena Roll") + Impacto Gigante + Acorde Mayor Luminoso
+        for idx_r, pos_r in enumerate([0, 180, 360, 480, 600, 700]):
+            gan_r = 0.45 + 0.55 * (idx_r / 5.0)
+            _sumar(pista, _snare_pop(190), pos_r, gan_r)
+            _sumar(pista, _kick_punch(220), pos_r, gan_r * 0.8)
+        _sumar(pista, _whoosh_aerodinamico(750, 300, 4600), 50, 0.85)
+        _sumar(pista, _sub_drop_cine(1400), 800, 1.0)
+        _sumar(pista, _kick_punch(300), 800, 1.0)
+        _sumar(pista, _synth_brass([261.63, 329.63, 392.00, 493.88, 587.33], 1700), 800, 0.95)
+        notas = [(523.25, 0, 0.3), (783.99, 110, 0.7), (1046.50, 220, 0.3), (1318.51, 330, 0.7), (1567.98, 440, 0.5)]
 
     logo = _pista(1800)
-    for idx, f in enumerate(notas):
-        pan = 0.2 + 0.6 * (idx / 4.0)
-        _sumar(logo, _pop_pluck(f, 450 if idx < 4 else 950, pan=pan), idx * 95, 1.0)
-    _sumar(pista, _stereo_delay(logo, 200, 300, 0.40, 0.36), 840, 0.95)
+    for f, pos_n, pan in notas:
+        _sumar(logo, _pop_pluck(f, 520, pan=pan), pos_n, 1.0)
+    _sumar(pista, _stereo_delay(logo, 200, 300, 0.42, 0.38), 830, 0.95)
 
-    return _fade(_reverb_estereo(pista, seg=1.3, mezcla=0.34), 15, 380)
+    return _fade(_reverb_estereo(pista, seg=1.35, mezcla=0.35), 15, 380)
 
 
 def sintetizar_transicion() -> np.ndarray:
-    estilo = random.choice(["flash_stinger", "swoosh_impact", "electro_pulse"])
+    """
+    Separador entre Clima y Noticias bien potente y diferenciado (4 estilos rotativos).
+    """
+    estilo = random.choice(["flash_news_radar", "double_laser_whip", "reverse_suction_drop", "musical_arp_bridge"])
     print(f"Estilo de Transición FM elegido: [{estilo}]")
-    pista = _pista(1700)
+    pista = _pista(1800)
 
-    if estilo == "flash_stinger":
-        _sumar(pista, _whoosh_aerodinamico(400, 3800, 300), 0, 0.85)
-        _sumar(pista, _sub_drop_cine(1000), 320, 0.90)
-        _sumar(pista, _kick_punch(250), 340, 1.0)
+    if estilo == "flash_news_radar":
+        # Sonar de Último Momento (3 beeps de radar estéreo + Whoosh + Golpe + Stinger de Noticias)
+        for i, pos_b in enumerate([0, 140, 280]):
+            t_b = _t(65)
+            sonar = np.sin(2 * np.pi * (1318.51 if i < 2 else 1760.0) * t_b) * np.hanning(len(t_b)) * 0.45
+            _sumar(pista, _est(sonar), pos_b)
+        _sumar(pista, _whoosh_aerodinamico(420, 350, 5200), 50, 0.90)
+        _sumar(pista, _sub_drop_cine(1100), 420, 1.0)
+        _sumar(pista, _kick_punch(260), 420, 1.0)
         notas = [587.33, 880.0, 1174.66, 1318.51]
-    elif estilo == "swoosh_impact":
-        _sumar(pista, _whoosh_aerodinamico(500, 250, 4800), 0, 0.90)
-        _sumar(pista, _laser_drop(350), 320, 0.72)
-        _sumar(pista, _kick_punch(250), 340, 1.0)
-        _sumar(pista, _snare_pop(190), 520, 0.85)
+        ini_st = 420
+
+    elif estilo == "double_laser_whip":
+        # Doble latigazo láser FM + Snare Pop + Acorde tenso informativo
+        _sumar(pista, _laser_drop(320), 0, 0.85)
+        _sumar(pista, _laser_drop(360), 220, 0.95)
+        _sumar(pista, _whoosh_aerodinamico(450, 4800, 300), 50, 0.85)
+        _sumar(pista, _kick_punch(260), 420, 1.0)
+        _sumar(pista, _snare_pop(200), 420, 0.90)
+        _sumar(pista, _sub_drop_cine(1100), 420, 0.95)
         notas = [659.25, 987.77, 1318.51, 1567.98]
+        ini_st = 420
+
+    elif estilo == "reverse_suction_drop":
+        # Barrido aspirado largo que corta en seco en un Sub-Drop profundo + Campanas con eco
+        _sumar(pista, _whoosh_aerodinamico(520, 200, 5500), 0, 0.95)
+        _sumar(pista, _sub_drop_cine(1200), 500, 1.0)
+        _sumar(pista, _kick_punch(280), 500, 1.0)
+        notas = [880.0, 659.25, 987.77, 1318.51]
+        ini_st = 500
+
     else:
-        _sumar(pista, _whoosh_aerodinamico(380, 2500, 500), 0, 0.80)
-        _sumar(pista, _sub_drop_cine(1000), 300, 0.95)
-        _sumar(pista, _kick_punch(240), 320, 1.0)
-        _sumar(pista, _kick_punch(240), 500, 0.90)
-        notas = [523.25, 783.99, 1046.50, 1174.66]
+        # Puente rítmico de batería (Kick-Snare-Kick) + Arpegio rápido ascendente
+        _sumar(pista, _kick_punch(220), 0, 0.95)
+        _sumar(pista, _snare_pop(180), 200, 0.90)
+        _sumar(pista, _whoosh_aerodinamico(400, 400, 4200), 80, 0.85)
+        _sumar(pista, _kick_punch(260), 400, 1.0)
+        _sumar(pista, _sub_drop_cine(1000), 400, 0.95)
+        notas = [523.25, 659.25, 783.99, 1046.50, 1318.51]
+        ini_st = 400
 
-    stinger = _pista(1200)
+    stinger = _pista(1300)
     for i, f in enumerate(notas):
-        _sumar(stinger, _pop_pluck(f, 400, pan=0.25 if i % 2 == 0 else 0.75), i * 85, 1.0)
-    _sumar(stinger, _synth_brass([notas[0] * 0.5, notas[1] * 0.5, notas[2] * 0.5], 950), 220, 0.80)
-    _sumar(pista, _stereo_delay(stinger, 160, 240, 0.35, 0.32), 340, 0.95)
+        _sumar(stinger, _pop_pluck(f, 420, pan=0.2 if i % 2 == 0 else 0.8), i * 85, 1.0)
+    _sumar(stinger, _synth_brass([notas[0] * 0.5, notas[1] * 0.5, notas[2] * 0.5], 950), 160, 0.85)
+    _sumar(pista, _stereo_delay(stinger, 160, 240, 0.38, 0.35), ini_st, 1.0)
 
-    return _fade(_reverb_estereo(pista, seg=0.95, mezcla=0.28), 10, 280)
+    return _fade(_reverb_estereo(pista, seg=1.0, mezcla=0.30), 10, 250)
 
 
 def sintetizar_cierre() -> np.ndarray:
-    pista = _pista(2600)
-    _sumar(pista, _whoosh_aerodinamico(420, 350, 3400), 0, 0.65)
-    _sumar(pista, _sub_drop_cine(1500), 340, 0.88)
-    _sumar(pista, _kick_punch(300), 360, 0.95)
-    _sumar(pista, _funky_bass(55.0, 1700), 360, 0.88)
+    """Cierre musical suave que acompaña el fade-out lento del final."""
+    pista = _pista(2800)
+    _sumar(pista, _whoosh_aerodinamico(450, 350, 3400), 0, 0.70)
+    _sumar(pista, _sub_drop_cine(1600), 360, 0.90)
+    _sumar(pista, _kick_punch(300), 380, 0.95)
+    _sumar(pista, _funky_bass(55.0, 1900), 380, 0.90)
 
-    acorde_fin = _synth_brass([220.0, 261.63, 329.63, 392.00, 523.25], 1900, corte_lp=2800)
-    _sumar(pista, acorde_fin, 360, 0.85)
+    acorde_fin = _synth_brass([220.0, 261.63, 329.63, 392.00, 523.25], 2100, corte_lp=2800)
+    _sumar(pista, acorde_fin, 380, 0.85)
 
     notas_fin = [1318.51, 1046.50, 880.0, 659.25]
-    arp = _pista(2000)
+    arp = _pista(2200)
     for i, f in enumerate(notas_fin):
-        _sumar(arp, _pop_pluck(f, 650 if i < 3 else 1100, pan=0.75 - i * 0.16), 360 + i * 110, 0.90)
-    _sumar(pista, _stereo_delay(arp, 220, 330, 0.38, 0.32), 0, 0.88)
+        _sumar(arp, _pop_pluck(f, 700 if i < 3 else 1200, pan=0.75 - i * 0.16), 380 + i * 115, 0.92)
+    _sumar(pista, _stereo_delay(arp, 220, 330, 0.38, 0.32), 0, 0.90)
 
-    out = _reverb_estereo(pista, seg=1.5, mezcla=0.38)[: len(pista)]
-    return _fade(out, 15, 950)
+    out = _reverb_estereo(pista, seg=1.6, mezcla=0.40)[: len(pista)]
+    return _fade(out, 15, 1200)
 
 
 # ---------------------------------------------------------------------------
-# Cortinas Musicales
+# Cortinas Musicales (Con Presencia Real debajo de la Voz)
 # ---------------------------------------------------------------------------
 
 def bed_clima_groove(modo: str, dur_ms: float) -> np.ndarray:
@@ -896,21 +1014,21 @@ def bed_clima_groove(modo: str, dur_ms: float) -> np.ndarray:
         if ini_c >= dur_ms:
             break
         pad_f, arp_f, bajo_f = acordes[c % len(acordes)]
-        _sumar(musica, _synth_brass(pad_f, compas_ms, corte_lp=1500), ini_c, 0.48)
+        _sumar(musica, _synth_brass(pad_f, compas_ms, corte_lp=1800), ini_c, 0.58)
 
         for b in range(8):
             f_b = bajo_f * 2.0 if b in (3, 7) else bajo_f
-            _sumar(musica, _funky_bass(f_b, 230), ini_c + b * 250.0, 0.70)
+            _sumar(musica, _funky_bass(f_b, 230), ini_c + b * 250.0, 0.80)
 
         for s in range(16):
             nota_f = arp_f[s % len(arp_f)]
             pan = 0.20 if s % 2 == 0 else 0.80
-            _sumar(musica, _pop_pluck(nota_f, 170, pan=pan), ini_c + s * semi_ms, 0.45)
+            _sumar(musica, _pop_pluck(nota_f, 180, pan=pan), ini_c + s * semi_ms, 0.55)
 
     fase_beat = (t * 2.0) % 1.0
-    sidechain = 0.45 + 0.55 * (1.0 - np.exp(-fase_beat * 5.0))
+    sidechain = 0.50 + 0.50 * (1.0 - np.exp(-fase_beat * 5.0))
     musica *= sidechain[:, None]
-    pista += _stereo_delay(musica, 250, 375, 0.28, 0.22)
+    pista += _stereo_delay(musica, 250, 375, 0.30, 0.25)
 
     kick = _kick_punch(230)
     snare = _snare_pop(180)
@@ -919,57 +1037,84 @@ def bed_clima_groove(modo: str, dur_ms: float) -> np.ndarray:
 
     for b in range(int(dur_ms / beat_ms) + 1):
         pos_b = b * beat_ms
-        _sumar(pista, kick, pos_b, 0.80)
+        _sumar(pista, kick, pos_b, 0.85)
         if b % 2 == 1:
-            _sumar(pista, snare, pos_b, 0.65)
-        _sumar(pista, hh_c, pos_b, 0.55)
-        _sumar(pista, hh_o, pos_b + 250.0, 0.50)
+            _sumar(pista, snare, pos_b, 0.72)
+        _sumar(pista, hh_c, pos_b, 0.62)
+        _sumar(pista, hh_o, pos_b + 250.0, 0.58)
 
     if modo in ("lluvia", "tormenta"):
-        agua = _filtrar(np.random.uniform(-1, 1, (len(t), 2)), pasa_altos=1200, pasa_bajos=7200)
+        agua = _filtrar(np.random.uniform(-1, 1, (len(t), 2)), pasa_altos=1100, pasa_bajos=7200)
         oleaje = 0.75 + 0.25 * np.sin(2 * np.pi * 0.3 * t)
-        pista += agua * oleaje[:, None] * 0.16
+        pista += agua * oleaje[:, None] * 0.20
         if modo == "tormenta":
             for pos_tr in (dur_ms * 0.20, dur_ms * 0.65):
                 t_tr = _t(2400)
                 trueno = _filtrar(np.random.uniform(-1, 1, (len(t_tr), 2)), pasa_altos=30, pasa_bajos=150)
                 env_tr = np.minimum(t_tr / 0.15, 1.0) * np.exp(-t_tr * 1.3)
-                _sumar(pista, _pico(trueno * env_tr[:, None], 0.70), pos_tr, 0.60)
+                _sumar(pista, _pico(trueno * env_tr[:, None], 0.75), pos_tr, 0.65)
 
     pista = _hueco_vocal_cortina(pista)
-    return _filtrar(pista, pasa_altos=40, pasa_bajos=10000)
+    return _filtrar(pista, pasa_altos=40, pasa_bajos=10500)
 
 
 def bed_noticias_groove(dur_ms: float) -> np.ndarray:
+    """
+    Cortina de Noticias bien audible y rítmica (126 BPM):
+    Acordes tensos de noticiero FM + Bajo pulsante + Batería + Sonar informativo estéreo.
+    """
     pista = _pista(dur_ms)
-    beat_ms = 468.75
+    beat_ms = 476.19   # 126 BPM
     semi_ms = beat_ms / 4.0
+    compas_ms = beat_ms * 4
 
+    # 1. Colchón de acordes informativos (Am9 -> Fmaj7 -> Dm7 -> E7sus4)
+    progresion_not = [
+        [220.0, 261.63, 329.63, 493.88],
+        [174.61, 220.0, 261.63, 329.63],
+        [146.83, 220.0, 261.63, 349.23],
+        [164.81, 220.0, 246.94, 329.63],
+    ]
+    for c in range(int(dur_ms / compas_ms) + 2):
+        ini_c = c * compas_ms
+        if ini_c >= dur_ms:
+            break
+        ac = progresion_not[c % len(progresion_not)]
+        _sumar(pista, _synth_brass(ac, compas_ms, corte_lp=1650), ini_c, 0.52)
+
+    # 2. Pulso de sintetizador y bajo en semicorcheas + Sonar de noticias
     secuencia = [220.0, 220.0, 440.0, 220.0, 329.63, 220.0, 392.0, 329.63]
     for i, pos in enumerate(np.arange(0, dur_ms - semi_ms, semi_ms)):
         f = secuencia[i % len(secuencia)]
-        pan = 0.25 if i % 2 == 0 else 0.75
-        _sumar(pista, _pop_pluck(f, 110, pan=pan), pos, 0.48)
-        if i % 4 == 0:
-            _sumar(pista, _funky_bass(f * 0.5, 200), pos, 0.70)
-        if i % 4 == 2:
-            t_b = _t(30)
-            bip = np.sin(2 * np.pi * 1567.98 * t_b) * np.hanning(len(t_b))
-            _sumar(pista, _est(bip * 0.12), pos)
+        pan = 0.22 if i % 2 == 0 else 0.78
+        _sumar(pista, _pop_pluck(f, 125, pan=pan), pos, 0.62)
+        if i % 2 == 0:
+            _sumar(pista, _funky_bass(f * 0.5, 210), pos, 0.80)
+        # Beep sonar estéreo de informativo cada 2 tiempos
+        if i % 8 == 0:
+            t_b = _t(55)
+            bip = (np.sin(2 * np.pi * 1318.51 * t_b) + 0.3 * np.sin(2 * np.pi * 2637.02 * t_b)) * np.hanning(len(t_b))
+            c_sonar = 0 if (i // 8) % 2 == 0 else 1
+            sonar_est = np.zeros((len(t_b), 2))
+            sonar_est[:, c_sonar] = bip * 0.28
+            sonar_est[:, 1 - c_sonar] = bip * 0.10
+            _sumar(pista, sonar_est, pos)
 
+    # 3. Batería ágil de Flash Informativo
     kick = _kick_punch(210)
-    snare = _snare_pop(160)
-    hh = _hihat_crisp(50, abierto=False)
+    snare = _snare_pop(165)
+    hh_c = _hihat_crisp(50, abierto=False)
+    hh_o = _hihat_crisp(140, abierto=True)
 
     for b, pos in enumerate(np.arange(0, dur_ms - beat_ms, beat_ms)):
-        _sumar(pista, kick, pos, 0.80)
+        _sumar(pista, kick, pos, 0.88)
         if b % 2 == 1:
-            _sumar(pista, snare, pos, 0.60)
-        for s in range(4):
-            _sumar(pista, hh, pos + s * semi_ms, 0.60 if s == 2 else 0.35)
+            _sumar(pista, snare, pos, 0.72)
+        _sumar(pista, hh_c, pos, 0.60)
+        _sumar(pista, hh_o, pos + beat_ms * 0.5, 0.55)
 
     pista = _hueco_vocal_cortina(pista)
-    return _stereo_delay(_filtrar(pista, pasa_altos=45, pasa_bajos=10000), 234, 351, 0.22, 0.18)
+    return _stereo_delay(_filtrar(pista, pasa_altos=45, pasa_bajos=10500), 238, 357, 0.26, 0.22)
 
 
 # ---------------------------------------------------------------------------
@@ -1002,7 +1147,7 @@ def _extender(x: np.ndarray, n: int) -> np.ndarray:
 def cargar_efecto(nombre: str, sintetizador) -> np.ndarray:
     seg = buscar_asset(nombre)
     x = seg_a_array(seg) if seg is not None else sintetizador()
-    return _pico(x, 0.95)
+    return _pico(x, 0.96)
 
 
 def construir_ambiente(nombre: str, dur_ms: float) -> np.ndarray:
@@ -1011,10 +1156,10 @@ def construir_ambiente(nombre: str, dur_ms: float) -> np.ndarray:
     if seg is not None:
         base = seg_a_array(seg)
     else:
-        print(f"Generando cortina V6 Pop/Dance ({nombre})...")
+        print(f"Generando cortina V7 Pop/Dance ({nombre})...")
         base = bed_clima_groove(nombre, dur_ms)
     x = _rms(_extender(base, n), REFERENCIA_RMS_DB)
-    return _fade(x, 300, 1100)
+    return _fade(x, 250, 900)
 
 
 def construir_cama_noticias(dur_ms: float) -> np.ndarray:
@@ -1023,10 +1168,10 @@ def construir_cama_noticias(dur_ms: float) -> np.ndarray:
     if seg is not None:
         base = seg_a_array(seg)
     else:
-        print("Generando cortina V6 Breaking News...")
+        print("Generando cortina V7 Breaking News (con final extendido para fade-out lento)...")
         base = bed_noticias_groove(dur_ms)
     x = _rms(_extender(base, n), REFERENCIA_RMS_DB)
-    return _fade(x, 250, 1800)
+    return _fade(x, 200, 2600)
 
 
 def cargar_pista_opcional(base: str) -> np.ndarray | None:
@@ -1037,13 +1182,13 @@ def cargar_pista_opcional(base: str) -> np.ndarray | None:
 
 
 # ---------------------------------------------------------------------------
-# Voces (Google Cloud TTS con SSML) + Procesador Vocal de Alta Claridad
+# Voces (Google Cloud TTS) + Reverb Plate FM & Doubler Estéreo
 # ---------------------------------------------------------------------------
 
 def texto_a_ssml(texto: str) -> str:
     seguro = texto.replace("&", " y ").replace("<", "").replace(">", "")
-    seguro = re.sub(r'\.\s+', '. <break time="280ms"/> ', seguro)
-    seguro = re.sub(r':\s+', ': <break time="200ms"/> ', seguro)
+    seguro = re.sub(r'\.\s+', '. <break time="270ms"/> ', seguro)
+    seguro = re.sub(r':\s+', ': <break time="190ms"/> ', seguro)
     return f"<speak><prosody rate='1.03'>{seguro}</prosody></speak>"
 
 
@@ -1056,27 +1201,43 @@ def sintetizar_voz(client, texto: str, nombre_voz: str, audio_config) -> np.ndar
 
 
 def procesar_voz(x: np.ndarray) -> np.ndarray:
+    """
+    Cadena Vocal FM Pro:
+    EQ de estudio + Micro-Doubler Estéreo + Reverb Plate de Cabina FM (con pre-delay para no perder nitidez).
+    """
     x = _filtrar(x, pasa_altos=85)
     cuerpo = _filtrar(x, pasa_altos=110, pasa_bajos=240)
     claridad = _filtrar(x, pasa_altos=2200, pasa_bajos=5600)
     aire = np.tanh(_filtrar(x, pasa_altos=6500) * 2.0) * 0.12
 
-    x = x + 0.22 * cuerpo + 0.34 * claridad + aire
-    x = _comprimir(x, thr_db=-24.0, ratio=4.0, ataque_ms=3.5, relajo_ms=110.0)
+    x = x + 0.22 * cuerpo + 0.32 * claridad + aire
+
+    # Micro-Doubler estéreo (efecto voz ancha de FM)
+    d_l = int(SR * 0.011)
+    d_r = int(SR * 0.017)
+    doble = np.zeros_like(x)
+    doble[d_l:, 0] = x[:-d_l, 0] * 0.13
+    doble[d_r:, 1] = x[:-d_r, 1] * 0.13
+    x = x + _filtrar(doble, pasa_altos=280, pasa_bajos=4000)
+
+    # Reverb Plate de Estudio FM (0.65s) + Slapback corto para que la voz tenga espacio y cuerpo radial
+    rev_plate = _reverb_estereo(x, seg=0.65, mezcla=0.15, brillo=4400)[: len(x)]
+    x = _comprimir(rev_plate, thr_db=-23.5, ratio=3.8, ataque_ms=3.5, relajo_ms=110.0)
     return _pico(x, 0.94)
 
 
 # ---------------------------------------------------------------------------
-# Ensamblado con FX de Entrada (Urbana Play / La 100) + Salida Final Limpia
+# Ensamblado con Espacio Limpio para Transición + Salida Fade-Out Lenta
 # ---------------------------------------------------------------------------
 
 def ensamblar_spot(voz_clima_cruda, voz_noticias_cruda, intro, trans, cierre, ambiente, cama, cama_noticias) -> np.ndarray:
-    voz_clima_con_cola, fx_out_clima = aplicar_fx_final_voz(voz_clima_cruda, es_cierre_final=(voz_noticias_cruda is None))
-    voz_clima_final, pre_ms_clima, fx_in_clima = aplicar_fx_entrada_voz(voz_clima_con_cola)
+    # 1. Procesamos FX de Entrada y Salida en la Voz del Clima
+    voz_clima_cola, fx_out_clima = aplicar_fx_final_voz(voz_clima_cruda, es_cierre_final=(voz_noticias_cruda is None))
+    voz_clima_final, pre_ms_clima, fx_in_clima = aplicar_fx_entrada_voz(voz_clima_cola)
     print(f"Voz Clima -> Entrada: [{fx_in_clima}] | Salida: [{fx_out_clima}]")
 
     inicio_habla_clima = 1650.0
-    inicio_pista_clima = max(700.0, inicio_habla_clima - pre_ms_clima)
+    inicio_pista_clima = max(650.0, inicio_habla_clima - pre_ms_clima)
     fin_clima_seco = inicio_habla_clima + _dur_ms(voz_clima_cruda)
 
     fin_voces_seco = fin_clima_seco
@@ -1090,46 +1251,54 @@ def ensamblar_spot(voz_clima_cruda, voz_noticias_cruda, intro, trans, cierre, am
         voz_noticias_final, pre_ms_not, fx_in_not = aplicar_fx_entrada_voz(voz_not_cola)
         print(f"Voz Noticias -> Entrada: [{fx_in_not}] | Salida: [{fx_out_not}]")
 
-        inicio_trans = fin_clima_seco - 60.0
-        inicio_habla_not = inicio_trans + 950.0
+        # Dejamos 250ms después de la voz seca del clima para que suene su eco,
+        # y luego le damos 1250ms de protagonismo limpio a la Transición antes de que arranquen las noticias
+        inicio_trans = fin_clima_seco + 200.0
+        inicio_habla_not = inicio_trans + 1250.0
         inicio_pista_not = inicio_habla_not - pre_ms_not
         fin_voces_seco = inicio_habla_not + _dur_ms(voz_noticias_cruda)
         fin_cola_vocal = inicio_pista_not + _dur_ms(voz_noticias_final)
 
-    inicio_cierre = fin_voces_seco - 80.0
-    total_ms = max(inicio_cierre + _dur_ms(cierre), fin_cola_vocal + 500.0)
+    # El cierre entra acompañando la cola de eco final y la música sigue bajando despacito durante 2.8s más
+    inicio_cierre = fin_voces_seco + 150.0
+    total_ms = max(inicio_cierre + _dur_ms(cierre), fin_cola_vocal + 1200.0)
 
-    bus_voces = _pista(total_ms + 600)
+    # Bus de Voces
+    bus_voces = _pista(total_ms + 800)
     _sumar(bus_voces, voz_clima_final, inicio_pista_clima, 1.0)
     if voz_noticias_final is not None and inicio_pista_not is not None:
         _sumar(bus_voces, voz_noticias_final, inicio_pista_not, 1.0)
 
-    bus_cortinas = _pista(total_ms + 600)
+    # Bus de Cortinas (Clima y Noticias bien presentes)
+    bus_cortinas = _pista(total_ms + 800)
     if ambiente is not None:
         _sumar(bus_cortinas, ambiente, 800.0, _g(AMBIENTE_DB))
     if cama_noticias is not None and inicio_trans is not None:
-        _sumar(bus_cortinas, cama_noticias, inicio_trans + 340.0, _g(TICKER_NOTICIAS_DB))
+        _sumar(bus_cortinas, cama_noticias, inicio_trans + 420.0, _g(TICKER_NOTICIAS_DB))
     if cama is not None:
-        _sumar(bus_cortinas, _extender(cama, len(bus_cortinas)), 0.0, _g(CAMA_DB_LIBRE - 4.0))
+        _sumar(bus_cortinas, _extender(cama, len(bus_cortinas)), 0.0, _g(CAMA_DB_LIBRE - 3.0))
 
-    bus_cortinas = _ducking_por_voz(bus_cortinas, bus_voces, reduccion_db=-6.5)
+    bus_cortinas = _ducking_por_voz(bus_cortinas, bus_voces, reduccion_db=-3.2)
 
+    # Fade-out musical lento y progresivo al final:
+    # La canción de fondo se mantiene mientras rebota el eco de la voz y recién después baja despacito hasta cero.
     n_total = int(SR * total_ms / 1000)
-    ini_fade_cama = max(0, int(SR * (fin_voces_seco - 1200.0) / 1000))
-    fin_fade_cama = min(n_total, int(SR * (fin_voces_seco + 450.0) / 1000))
+    ini_fade_cama = max(0, int(SR * (fin_voces_seco + 200.0) / 1000))
+    fin_fade_cama = n_total
     if fin_fade_cama > ini_fade_cama:
-        curva_cama = np.linspace(1.0, 0.0, fin_fade_cama - ini_fade_cama) ** 1.6
+        curva_cama = np.linspace(1.0, 0.0, fin_fade_cama - ini_fade_cama) ** 1.5
         bus_cortinas[ini_fade_cama:fin_fade_cama] *= curva_cama[:, None]
         bus_cortinas[fin_fade_cama:] = 0.0
 
-    bus_fx = _pista(total_ms + 600)
+    # Bus de Sweepers (Sin ducking para que la Intro y la Transición golpeen al 100%)
+    bus_fx = _pista(total_ms + 800)
     _sumar(bus_fx, intro, 0.0, _g(EFECTOS_DB))
     if inicio_trans is not None:
         _sumar(bus_fx, trans, inicio_trans, _g(EFECTOS_DB))
-    _sumar(bus_fx, cierre, inicio_cierre, _g(EFECTOS_DB - 1.2))
+    _sumar(bus_fx, cierre, inicio_cierre, _g(EFECTOS_DB - 1.5))
 
     master = (bus_voces + bus_cortinas + bus_fx)[:n_total]
-    return _fade(master, 15, 750)
+    return _fade(master, 15, 950)
 
 
 def masterizar(x: np.ndarray) -> np.ndarray:
@@ -1139,16 +1308,16 @@ def masterizar(x: np.ndarray) -> np.ndarray:
     medios = _comprimir(_filtrar(x, pasa_altos=200, pasa_bajos=4200), thr_db=-17.0, ratio=2.6, ataque_ms=8.0, relajo_ms=140.0)
     agudos = _comprimir(_filtrar(x, pasa_altos=4200), thr_db=-19.0, ratio=2.4, ataque_ms=4.0, relajo_ms=90.0)
 
-    x = graves * 1.06 + medios * 1.04 + agudos * 1.12
+    x = graves * 1.08 + medios * 1.04 + agudos * 1.12
 
     mid = 0.5 * (x[:, 0] + x[:, 1])
     side = 0.5 * (x[:, 0] - x[:, 1])
-    side_amplio = _filtrar(_est(side), pasa_altos=240)[:, 0] * 1.25
+    side_amplio = _filtrar(_est(side), pasa_altos=240)[:, 0] * 1.28
     x = np.column_stack((mid + side_amplio, mid - side_amplio))
 
     x = _comprimir(x, thr_db=-13.5, ratio=3.8, ataque_ms=5.0, relajo_ms=120.0)
     x = np.tanh(x * 1.14)
-    return _fade(_pico(x, 0.95), 10, 600)
+    return _fade(_pico(x, 0.95), 10, 800)
 
 
 def generar_spot(texto_clima: str, texto_noticias: str, ambiente_nombre: str, path_salida: str) -> None:
@@ -1172,14 +1341,15 @@ def generar_spot(texto_clima: str, texto_noticias: str, ambiente_nombre: str, pa
     trans = cargar_efecto("transicion", sintetizar_transicion)
     cierre = cargar_efecto("cierre", sintetizar_cierre)
 
-    ambiente = construir_ambiente(ambiente_nombre, _dur_ms(voz_clima) + 400)
+    # Extendemos la duración de las camas para cubrir los ecos y el fade-out lento del final
+    ambiente = construir_ambiente(ambiente_nombre, _dur_ms(voz_clima) + 1200)
     cama = cargar_pista_opcional("cama")
-    cama_noticias = construir_cama_noticias(_dur_ms(voz_noticias) + 800) if voz_noticias is not None else None
+    cama_noticias = construir_cama_noticias(_dur_ms(voz_noticias) + 3200) if voz_noticias is not None else None
 
     mezcla = ensamblar_spot(voz_clima, voz_noticias, intro, trans, cierre, ambiente, cama, cama_noticias)
     final = masterizar(mezcla)
     array_a_seg(final).export(path_salida, format="mp3", bitrate="192k")
-    print(f"¡Spot V6 Broadcast Polish ({len(final) / SR:.1f} s) guardado exitosamente en {path_salida}!")
+    print(f"¡Spot V7 Master FM ({len(final) / SR:.1f} s) guardado exitosamente en {path_salida}!")
 
 
 # ---------------------------------------------------------------------------
@@ -1202,7 +1372,7 @@ def subir_sftp(local_path: str, host: str, port: int, user: str, password: str, 
 
 
 def main():
-    print("=== EJECUTANDO NOGARADIO VERSION V6 BROADCAST POLISH ===")
+    print("=== EJECUTANDO NOGARADIO VERSION V7 MASTER FM ===")
     sftp_host = os.environ.get("SFTP_HOST")
     sftp_port = int(os.environ.get("SFTP_PORT", "2022"))
     sftp_user = os.environ.get("SFTP_USER")
@@ -1224,7 +1394,7 @@ def main():
     titular_musica = obtener_titular_verificado(FEEDS_MUSICA, 20)
     texto_noticias = armar_texto_noticias(titular_mundo, titular_musica)
 
-    print("Generando spot con procesador V6 Broadcast Polish...")
+    print("Generando spot con procesador V7 Master FM...")
     generar_spot(texto_clima, texto_noticias, ambiente_nombre, LOCAL_MP3)
 
     print("Subiendo por SFTP...")
