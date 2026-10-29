@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """
-Spot automático de clima y noticias para AzuraCast (Nogaradio) - VERSION V9 DUO IMAGING (Estilo Urbana Play / La 100).
+Spot automático de clima y noticias para AzuraCast (Nogaradio) - VERSION V10 CLEAN FM PRO.
 
-Arquitectura de 4 bloques vocales independientes (Cero cortes fallidos):
-  1) TAG INICIAL (Voz A con FX FM: Reverse Swell + Reverb Low / Slap Delay).
-  2) CUERPO CLIMA (Voz A 100% SECA, sin eco ni reverb durante la lectura).
-  3) GRAN TRANSICIÓN FM NOTORIA -> CUERPO NOTICIAS (Voz B 100% SECA, clara y al frente).
-  4) TRANSICIÓN PASE HOMBRE/MUJER -> REMATE FINAL MÍTICO (Vuelve Voz A con Reverb Low + Eco Ping-Pong / Slow FM)
-     mientras la canción de fondo baja despacito en un fade-out limpio de 3 segundos.
+Correcciones clave de esta versión:
+  - ELIMINADO EL EFECTO "REVERB SLOWED": Se reemplazó por 5 efectos FM limpios (Ping-Pong Cristal,
+    Stereo Chorus Widener, Filtro Radio Throw, Multi-Tap Hall y Phaser Ping-Pong).
+  - CERO CORTES EN LA ENTRADA DE VOZ: Se quitó el pre-corte invertido que hacía parecer que la voz
+    arrancaba y se cortaba un microsegundo. Ahora la voz entra 100% fluida y continua.
+  - ENVÍO DE ECO CON RAMPA COSENO: En vez de cortar palabras en seco, usa una curva suave de estudio
+    para enviar el final de la frase al eco sin producir jamás un corte o clic.
+  - NUEVAS FRASES FINALES: Incluye "Estamos en Play Store y Apple Store", "Seguí con esta programación" y más.
+  - 6 Intros FM y 4 Transiciones notorias entre Clima y Noticias + Fade-Out lento final.
 """
 
 import glob
@@ -52,11 +55,10 @@ ASSETS_DIR = "assets"
 EXTENSIONES = (".mp3", ".wav", ".ogg", ".m4a", ".flac")
 SR = 44100
 
-# Niveles de mezcla en dB
 REFERENCIA_RMS_DB = -18.5
-EFECTOS_DB = -0.5          # Intros y Transiciones bien al frente y notorias
+EFECTOS_DB = -0.5          # Intros y Transiciones bien al frente
 AMBIENTE_DB = -8.5         # Cortina de clima presente debajo de la voz
-TICKER_NOTICIAS_DB = -8.0  # Cortina de noticias bien audible
+TICKER_NOTICIAS_DB = -8.0  # Cortina de noticias audible mientras dicta los titulares
 CAMA_DB_LIBRE = -4.5
 CAMA_DB_VOZ = -10.5
 
@@ -128,16 +130,17 @@ def saludo_segun_hora(hora_actual: int) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Guiones Míticos FM (Separados en Apertura, Clima, Noticias y Remate Dúo)
+# Guiones FM (Apertura, Clima, Noticias y Remates con Play Store / Apple Store)
 # ---------------------------------------------------------------------------
 
 TAGS_APERTURA_FM = [
-    "Escuchás, Nogaradio.",
-    "Conectados, en Nogaradio.",
-    "Suena, Nogaradio.",
+    "Escuchás Nogaradio.",
+    "Conectados en Nogaradio.",
+    "Suena Nogaradio.",
     "Estás en Nogaradio, tu radio.",
-    "La radio que te mueve. Nogaradio.",
-    "Siempre en tu sintonía. Nogaradio.",
+    "La radio que te mueve, Nogaradio.",
+    "Siempre en tu sintonía, Nogaradio.",
+    "Subí el volumen, esto es Nogaradio.",
 ]
 
 FRASES_PASE_NOTICIAS = [
@@ -155,23 +158,25 @@ PLANTILLAS_CLIMA = [
     "{saludo}. Cuando pasan las {hora}, miramos cómo está el tiempo en {ciudad}: tenemos {descripcion}, {temp} grados de temperatura, térmica de {sensacion} y vientos de {viento} kilómetros por hora. {pase}",
 ]
 
-# Pie que deja picando el Locutor 2 al terminar las noticias, antes de que entre el Locutor 1 al remate
+# Pie que dice el Locutor de Noticias antes del pase al otro locutor
 PIES_PRE_CIERRE_NOTICIAS = [
-    "Ya estás al día con toda la información. Subí el volumen,",
-    "Hasta acá el flash informativo de esta hora. No te muevas del dial,",
-    "Así actualizamos los titulares del momento. Quedate del otro lado,",
-    "Toda la actualidad al instante en tu radio. Seguí con nosotros,",
-    "Ya estás bien informado. Ahora sigue sonando la mejor música,",
+    "Ya estás al día con toda la información. Llevanos siempre en tu celu, estamos en Play Store y Apple Store.",
+    "Hasta acá el flash informativo de esta hora. Descargá nuestra app, estamos en Play Store y Apple Store.",
+    "Así actualizamos los titulares del momento. Quedate del otro lado y seguí con esta programación.",
+    "Toda la actualidad al instante en tu radio. Buscanos en Play Store y Apple Store para escucharnos a donde vayas.",
+    "Ya estás bien informado. No te muevas del dial y seguí con esta programación.",
+    "La información y los mejores hits en un solo lugar. Encontranos en Play Store y Apple Store.",
 ]
 
-# Frases míticas finales que dice el otro locutor con efecto Reverb Low / Eco Ping-Pong / Slow
+# Frases finales que dice el otro locutor con efecto FM limpio (Eco Ping-Pong / Chorus / Radio Throw)
 REMATES_FINALES_MITICOS = [
-    "porque en Nogaradio, seguimos con vos.",
-    "escuchás Nogaradio, veinticuatro siete sonando para vos.",
-    "en Nogaradio, estamos siempre con vos.",
-    "esto es Nogaradio, conectados con vos.",
-    "viví la música en Nogaradio, siempre junto a vos.",
-    "Nogaradio, la radio que suena para vos.",
+    "Seguí con esta programación. En Nogaradio, seguimos con vos.",
+    "Descargá la app en Play Store y Apple Store. Escuchás Nogaradio, sonando para vos.",
+    "Veinticuatro siete con la mejor música. En Nogaradio, estamos siempre con vos.",
+    "Estamos en Play Store y Apple Store. Esto es Nogaradio, conectados con vos.",
+    "Seguí con esta programación. Viví la música en Nogaradio, siempre junto a vos.",
+    "En todas partes y en tu celular. Nogaradio, veinticuatro siete sonando para vos.",
+    "No cambies de sintonía, seguí con esta programación. En Nogaradio, seguimos con vos.",
 ]
 
 
@@ -195,7 +200,6 @@ def obtener_clima(reintentos: int = 3, espera: int = 5) -> dict | None:
 
 
 def armar_textos_clima(data: dict | None) -> tuple[str, str]:
-    """Devuelve (tag_apertura, cuerpo_clima_seco)."""
     ahora = datetime.now(ZONA_HORARIA)
     hora_str = hora_en_espanol(ahora.hour, ahora.minute)
     saludo = saludo_segun_hora(ahora.hour)
@@ -336,9 +340,13 @@ def obtener_titular_verificado(lista_feeds: list[str], cantidad: int = 20) -> st
 
 
 def armar_textos_noticias_y_remate(titular_mundo: str | None, titular_musica: str | None) -> tuple[str, str]:
-    """Devuelve (cuerpo_noticias_seco, frase_remate_final_otro_locutor)."""
     pie = random.choice(PIES_PRE_CIERRE_NOTICIAS)
     remate = random.choice(REMATES_FINALES_MITICOS)
+    # Si el pie ya mencionó Play Store, elegimos un remate de programación/compañía para no repetir la frase seguida
+    if "Play Store" in pie and "Play Store" in remate:
+        remates_sin_app = [r for r in REMATES_FINALES_MITICOS if "Play Store" not in r]
+        remate = random.choice(remates_sin_app)
+
     intro_mundo = random.choice(["Flash internacional:", "Actualidad internacional:", "En el plano internacional:"])
     intro_musica = random.choice(["Y en la música:", "Pasando a la música:", "En novedades musicales:"])
 
@@ -354,7 +362,7 @@ def armar_textos_noticias_y_remate(titular_mundo: str | None, titular_musica: st
 
 
 # ---------------------------------------------------------------------------
-# Motor DSP + Efectos Vocales Estilo Urbana Play / La 100 (Reverb Low, Eco, Slow)
+# Motor DSP + Efectos Vocales FM Limpios (Sin Slowed y Sin Micro-Cortes)
 # ---------------------------------------------------------------------------
 
 def seg_a_array(seg: AudioSegment) -> np.ndarray:
@@ -467,60 +475,59 @@ def _comprimir(x: np.ndarray, thr_db: float = -20.0, ratio: float = 3.0,
     return x * ganancia[:, None]
 
 
-def _recortar_silencio(x: np.ndarray, umbral: float = 0.018) -> np.ndarray:
+def _recortar_silencio(x: np.ndarray, umbral: float = 0.015) -> np.ndarray:
     env = np.abs(x).max(axis=1)
     activos = np.where(env > umbral)[0]
     if len(activos) == 0:
         return x
-    ini = max(0, activos[0] - int(SR * 0.020))
-    fin = min(len(x), activos[-1] + int(SR * 0.035))
-    return _fade(x[ini:fin], 12, 25)
+    ini = max(0, activos[0] - int(SR * 0.025))
+    fin = min(len(x), activos[-1] + int(SR * 0.040))
+    return _fade(x[ini:fin], 10, 25)
 
 
-def _extraer_ultima_palabra(x: np.ndarray) -> np.ndarray:
-    n = len(x)
-    min_muestras = int(SR * 0.32)
-    max_muestras = min(int(SR * 0.70), int(n * 0.65))
-    if max_muestras <= min_muestras:
-        return _fade(x.copy(), 25, 35)
-
-    tramo_busqueda = np.abs(x[n - max_muestras : n - min_muestras]).max(axis=1)
-    win = max(1, int(SR * 0.012))
-    kernel = np.ones(win) / win
-    env_suave = np.convolve(tramo_busqueda, kernel, mode="same")
-
-    offset_min = int(np.argmin(env_suave))
-    idx_corte = (n - max_muestras) + offset_min
-    trozo = x[idx_corte:].copy()
-    return _fade(trozo, 25, 35)
-
-
-def _estirar_pitch_slow(trozo: np.ndarray, factor: float = 1.28) -> np.ndarray:
-    """Desacelera y baja el tono (Pitch-Down / Slow) con apertura estéreo Haas."""
-    n_orig = len(trozo)
-    n_nuevo = max(1, int(n_orig * factor))
-    idx_orig = np.arange(n_orig)
-    idx_nuevo = np.linspace(0, n_orig - 1, n_nuevo)
-    l = np.interp(idx_nuevo, idx_orig, trozo[:, 0])
-    r = np.interp(idx_nuevo, idx_orig, trozo[:, 1])
-
-    d = int(SR * 0.015)
-    r_w = np.pad(r, (d, 0))[:n_nuevo]
-    out = np.column_stack((l, r_w))
-    return _fade(_filtrar(out, pasa_altos=75, pasa_bajos=2800), 35, 70)
-
-
-def _capa_reverb_low_fm(x: np.ndarray) -> np.ndarray:
+def _extraer_cola_suave_sin_cortes(x: np.ndarray) -> np.ndarray:
     """
-    Efecto 'Reverb Low' mítico de Urbana Play / La 100:
-    Crea una voz grave sub-octavada envuelta en Reverb Hall oscura que acompaña por debajo a la voz líder.
+    Extrae las últimas palabras de la frase ('con vos', 'para vos', 'Apple Store')
+    usando una rampa coseno suave de 110ms centrada en la pausa previa para que JAMÁS haya un corte brusco.
     """
     n = len(x)
-    grave_estirado = _estirar_pitch_slow(x, factor=1.22)
-    # Ajustamos al largo de la frase con cola de reverb oscura
-    rev_oscura = _reverb_estereo(grave_estirado, seg=1.35, mezcla=0.75, brillo=1800)
-    rev_oscura = _filtrar(rev_oscura, pasa_altos=70, pasa_bajos=1600)
-    return _fade(rev_oscura, 20, 250)
+    min_m = int(SR * 0.34)
+    max_m = min(int(SR * 0.68), int(n * 0.60))
+    if max_m <= min_m:
+        trozo = x[-min(n, int(SR * 0.45)):].copy()
+    else:
+        tramo = np.abs(x[n - max_m : n - min_m]).max(axis=1)
+        win = max(1, int(SR * 0.012))
+        env_s = np.convolve(tramo, np.ones(win) / win, mode="same")
+        idx_corte = (n - max_m) + int(np.argmin(env_s))
+        trozo = x[idx_corte:].copy()
+
+    # Aplicamos rampa coseno (S-curve) de entrada (90ms) y salida (50ms) para suavidad total
+    r_in = min(int(SR * 0.090), len(trozo) // 3)
+    r_out = min(int(SR * 0.050), len(trozo) // 4)
+    if r_in > 0:
+        curva_in = 0.5 * (1.0 - np.cos(np.pi * np.linspace(0.0, 1.0, r_in)))
+        trozo[:r_in] *= curva_in[:, None]
+    if r_out > 0:
+        curva_out = 0.5 * (1.0 + np.cos(np.pi * np.linspace(0.0, 1.0, r_out)))
+        trozo[-r_out:] *= curva_out[:, None]
+    return trozo
+
+
+def _chorus_estereo_fm(x: np.ndarray) -> np.ndarray:
+    """Efecto Stereo Chorus / Widener limpio que abre la voz en ambos auriculares estilo promo de FM."""
+    n = len(x)
+    t = np.arange(n) / SR
+    idx = np.arange(n, dtype=np.float64)
+    # Modulación suave de 1.8 Hz en L y R (sin desafinar feo, solo ensancha en estéreo)
+    delay_l = 0.011 * SR + 0.0018 * SR * np.sin(2 * np.pi * 1.8 * t)
+    delay_r = 0.016 * SR + 0.0018 * SR * np.cos(2 * np.pi * 1.6 * t)
+
+    l_mod = np.interp(np.maximum(0.0, idx - delay_l), idx, x[:, 0])
+    r_mod = np.interp(np.maximum(0.0, idx - delay_r), idx, x[:, 1])
+    estereo_ancho = np.column_stack((l_mod, r_mod))
+    estereo_ancho = _filtrar(estereo_ancho, pasa_altos=220, pasa_bajos=5500)
+    return x * 0.78 + estereo_ancho * 0.42
 
 
 def _phaser_estereo_fx(x: np.ndarray) -> np.ndarray:
@@ -536,154 +543,157 @@ def _phaser_estereo_fx(x: np.ndarray) -> np.ndarray:
     return out
 
 
-def procesar_tag_inicio_fm(tag_crudo: np.ndarray) -> tuple[np.ndarray, float, str]:
+def procesar_tag_inicio_fm(tag_crudo: np.ndarray) -> tuple[np.ndarray, str]:
     """
-    Procesa EXCLUSIVAMENTE el Tag Mítico Inicial ('Escuchás Nogaradio', 'Conectados en Nogaradio')
-    con estética de artística radial (Urbana Play / La 100) sin tocar para nada el texto del clima.
+    Procesa el Tag Inicial ('Escuchás Nogaradio', 'Conectados en Nogaradio')
+    SIN ningún pre-corte invertido (entra 100% fluido desde el milisegundo 0)
+    y aplica un efecto FM limpio en la cola de 'Nogaradio'.
     """
-    estilo = random.choice(["urbana_reverb_low_swell", "la100_reverse_pingpong", "megaphone_phaser_drop"])
-    n_pre = min(int(SR * 0.38), len(tag_crudo) // 2)
-    trozo_ini = _fade(tag_crudo[:n_pre].copy(), 20, 35)
+    estilo = random.choice(["stereo_widener_pingpong", "radio_fm_open_echo", "crystal_slap_stereo"])
+    cola_pal = _extraer_cola_suave_sin_cortes(tag_crudo)
+    eco_pal = _filtrar(cola_pal, pasa_altos=380, pasa_bajos=3500)
+    eco_rev = _reverb_estereo(eco_pal, seg=0.95, mezcla=0.38, brillo=4200)[: len(eco_pal)]
 
-    # 1. Pre-Swell invertido que anticipa la entrada
-    rev_in = _filtrar(trozo_ini[::-1].copy(), pasa_altos=300, pasa_bajos=3800)
-    rev_in = _reverb_estereo(rev_in, seg=0.75, mezcla=0.70, brillo=4000)[: len(rev_in)]
-    curva = (np.linspace(0.0, 1.0, len(rev_in)) ** 2.1)[:, None]
-    swell = _fade(_pico(rev_in * curva, 0.72), 25, 12)
-    pre_ms = _dur_ms(swell)
-
-    # 2. Procesamiento del cuerpo del Tag + Cola de Eco corta hacia el saludo del clima
-    ultima_pal = _extraer_ultima_palabra(tag_crudo)
-    eco_pal = _filtrar(ultima_pal, pasa_altos=380, pasa_bajos=3200)
-
-    if estilo == "urbana_reverb_low_swell":
-        # Suma la capa Reverb Low debajo del tag + 2 rebotes estéreo
-        low_layer = _capa_reverb_low_fm(tag_crudo)
-        largo = max(len(tag_crudo) + int(SR * 0.55), len(low_layer))
-        cuerpo = _pista(largo * 1000.0 / SR)
-        _sumar(cuerpo, tag_crudo, 0.0, 1.0)
-        _sumar(cuerpo, low_layer, 20.0, 0.42)
-        _sumar(cuerpo, eco_pal, _dur_ms(tag_crudo) - 20.0, 0.48)
-        return np.vstack((swell, cuerpo)), pre_ms, "Urbana Reverb-Low + Reverse Swell"
-
-    elif estilo == "la100_reverse_pingpong":
-        # Tag brillante con doble rebote Ping-Pong L/R en 'Nogaradio'
-        cuerpo = np.pad(tag_crudo, ((0, int(SR * 0.65)), (0, 0)))
-        base_ms = _dur_ms(tag_crudo) - 25.0
+    if estilo == "stereo_widener_pingpong":
+        # Ensancha 'Escuchás Nogaradio' en estéreo + 2 ecos Ping-Pong limpios al terminar
+        voz_ancha = _chorus_estereo_fm(tag_crudo)
+        out = np.pad(voz_ancha, ((0, int(SR * 0.65)), (0, 0)))
+        base_ms = _dur_ms(voz_ancha) - 20.0
         for rep, c in [(1, 0), (2, 1)]:
-            tramo = np.zeros_like(eco_pal)
-            tramo[:, c] = eco_pal[:, c] * 0.95
-            tramo[:, 1 - c] = eco_pal[:, 1 - c] * 0.25
-            _sumar(cuerpo, tramo, base_ms + (rep - 1) * 230.0, 0.52 ** rep)
-        return np.vstack((swell, cuerpo)), pre_ms, "La 100 Reverse + Ping-Pong Tag"
+            tramo = np.zeros_like(eco_rev)
+            tramo[:, c] = eco_rev[:, c] * 0.95
+            tramo[:, 1 - c] = eco_rev[:, 1 - c] * 0.25
+            _sumar(out, tramo, base_ms + (rep - 1) * 230.0, 0.50 ** rep)
+        return out, "Stereo Widener + Ping-Pong Limpio"
 
-    else:
-        # Efecto Radio/Phaser FM en la primera mitad del tag abriendo a HD + Eco
+    elif estilo == "radio_fm_open_echo":
+        # Arranca con un toque de filtro FM que se abre suavemente sin cortes + eco estéreo
         cuerpo = tag_crudo.copy()
         mitad = len(cuerpo) // 2
-        radio = _phaser_estereo_fx(np.tanh(_filtrar(cuerpo[:mitad], pasa_altos=520, pasa_bajos=2800) * 2.2) * 0.72)
-        cuerpo[:mitad] = cuerpo[:mitad] * 0.30 + radio * 0.80
-        cuerpo = np.pad(cuerpo, ((0, int(SR * 0.50)), (0, 0)))
-        _sumar(cuerpo, _phaser_estereo_fx(eco_pal), _dur_ms(tag_crudo) - 20.0, 0.46)
-        return np.vstack((swell, cuerpo)), pre_ms, "FM Phaser Filter + Swell Tag"
+        radio = np.tanh(_filtrar(cuerpo[:mitad], pasa_altos=500, pasa_bajos=3000) * 1.9) * 0.78
+        curva = np.linspace(0.85, 0.0, mitad)[:, None]
+        cuerpo[:mitad] = cuerpo[:mitad] * (1.0 - curva * 0.65) + radio * (curva * 0.75)
+
+        out = np.pad(cuerpo, ((0, int(SR * 0.60)), (0, 0)))
+        _sumar(out, eco_rev, _dur_ms(cuerpo) - 15.0, 0.48)
+        return out, "Filtro FM Open + Eco Estéreo"
+
+    else:
+        # Voz nítida con Slapback estéreo corto estilo La 100 + cola brillante
+        out = np.pad(tag_crudo, ((0, int(SR * 0.65)), (0, 0)))
+        slap = _filtrar(tag_crudo, pasa_altos=400, pasa_bajos=3800) * 0.22
+        _sumar(out, np.column_stack((slap[:, 0], slap[:, 1] * 0.3)), 95.0, 1.0)
+        _sumar(out, eco_rev, _dur_ms(tag_crudo) - 15.0, 0.48)
+        return out, "Crystal Slapback FM + Cola"
 
 
 def procesar_remate_final_fm(remate_crudo: np.ndarray) -> tuple[np.ndarray, str]:
     """
-    Procesa la FRASE MÍTICA FINAL (dicha por el otro locutor tras el pase Hombre/Mujer).
-    Como es un clip aislado, aplica Reverb Low, Eco Ping-Pong, Slow Grave y Stutter con precisión perfecta.
+    Procesa la FRASE FINAL del spot con 5 efectos de estudio FM 100% limpios
+    (SIN Reverb Slowed) y sin cortar ninguna sílaba:
+      1) Ping-Pong Cristal FM (4 rebotes L/R con brillo Hall)
+      2) Chorus Stereo Widener + Ping-Pong (voz doble ancha + eco)
+      3) Filtro Radio/Teléfono Throw Delay (los ecos salen filtrados tipo radio AM/FM)
+      4) Multi-Tap Arena Hall (rebotes rápidos rítmicos en estéreo)
+      5) Phaser Espacial Ping-Pong (eco con movimiento de fase estéreo)
     """
     estilo = random.choice([
-        "reverb_low_mas_pingpong",
-        "pingpong_mas_slow_grave",
-        "stutter_urbana_mas_eco",
-        "phaser_hall_throw",
+        "pingpong_cristal_fm",
+        "chorus_widener_eco",
+        "radio_telefonico_throw",
+        "multitap_arena_hall",
+        "phaser_pingpong_fm",
     ])
 
-    palabra_fin = _extraer_ultima_palabra(remate_crudo)
-    pal_eq = _filtrar(palabra_fin, pasa_altos=350, pasa_bajos=3400)
-    pal_rev = _reverb_estereo(pal_eq, seg=1.25, mezcla=0.48, brillo=4000)[: len(pal_eq)]
+    palabra_fin = _extraer_cola_suave_sin_cortes(remate_crudo)
+    pal_eq = _filtrar(palabra_fin, pasa_altos=360, pasa_bajos=3600)
+    pal_rev = _reverb_estereo(pal_eq, seg=1.20, mezcla=0.42, brillo=4500)[: len(pal_eq)]
 
-    if estilo == "reverb_low_mas_pingpong":
-        # El clásico de FM: la frase final sale acompañada por una sombra grave "Reverb Low"
-        # y la última palabra ("con vos" / "para vos") rebota 4 veces en Ping-Pong estéreo.
-        low_layer = _capa_reverb_low_fm(remate_crudo)
-        cola_ms = 1650
+    if estilo == "pingpong_cristal_fm":
+        # El clásico eco Ping-Pong limpio que rebota 4 veces de izquierda a derecha mientras se apaga
+        cola_ms = 1550
         out = _pista(_dur_ms(remate_crudo) + cola_ms)
         _sumar(out, remate_crudo, 0.0, 1.0)
-        _sumar(out, low_layer, 15.0, 0.45)
 
-        base_ms = _dur_ms(remate_crudo) - 25.0
+        base_ms = _dur_ms(remate_crudo) - 20.0
         for rep in range(1, 5):
             pos_ms = base_ms + (rep - 1) * 260.0
             c = rep % 2
             tramo = np.zeros_like(pal_rev)
             tramo[:, c] = pal_rev[:, c] * 0.95
-            tramo[:, 1 - c] = pal_rev[:, 1 - c] * 0.28
+            tramo[:, 1 - c] = pal_rev[:, 1 - c] * 0.25
             _sumar(out, tramo, pos_ms, 0.58 ** rep)
-        return out, "Reverb Low FM + Eco Ping-Pong"
+        return out, "Eco Ping-Pong Cristal FM"
 
-    elif estilo == "pingpong_mas_slow_grave":
-        # Hace 2 rebotes Ping-Pong limpios y un 3er rebote en Slow-Motion grave profundo con Reverb Hall
-        pal_slow = _estirar_pitch_slow(palabra_fin, factor=1.32)
-        pal_slow = _reverb_estereo(pal_slow, seg=1.3, mezcla=0.45, brillo=2600)[: len(pal_slow)]
+    elif estilo == "chorus_widener_eco":
+        # La frase final suena ancha en estéreo (Chorus Widener) y termina con 4 ecos Ping-Pong
+        voz_ancha = _chorus_estereo_fm(remate_crudo)
+        pal_ancha = _chorus_estereo_fm(pal_rev)
+        cola_ms = 1550
+        out = _pista(_dur_ms(voz_ancha) + cola_ms)
+        _sumar(out, voz_ancha, 0.0, 1.0)
 
-        cola_ms = 1750
+        base_ms = _dur_ms(voz_ancha) - 20.0
+        for rep in range(1, 5):
+            pos_ms = base_ms + (rep - 1) * 255.0
+            c = (rep + 1) % 2
+            tramo = np.zeros_like(pal_ancha)
+            tramo[:, c] = pal_ancha[:, c] * 0.95
+            tramo[:, 1 - c] = pal_ancha[:, 1 - c] * 0.30
+            _sumar(out, tramo, pos_ms, 0.58 ** rep)
+        return out, "Stereo Chorus Widener + Ping-Pong"
+
+    elif estilo == "radio_telefonico_throw":
+        # La voz principal sale limpia HD y los rebotes del eco salen con efecto Radio Telefónico saturado suave
+        pal_radio = np.tanh(_filtrar(palabra_fin, pasa_altos=550, pasa_bajos=2600) * 2.1) * 0.68
+        pal_radio = _reverb_estereo(pal_radio, seg=1.1, mezcla=0.38, brillo=3200)[: len(pal_radio)]
+
+        cola_ms = 1550
+        out = _pista(_dur_ms(remate_crudo) + cola_ms)
+        _sumar(out, remate_crudo, 0.0, 1.0)
+
+        base_ms = _dur_ms(remate_crudo) - 15.0
+        for rep in range(1, 5):
+            pos_ms = base_ms + (rep - 1) * 250.0
+            c = rep % 2
+            tramo = np.zeros_like(pal_radio)
+            tramo[:, c] = pal_radio[:, c] * 0.95
+            tramo[:, 1 - c] = pal_radio[:, 1 - c] * 0.25
+            _sumar(out, tramo, pos_ms, 0.60 ** rep)
+        return out, "Filtro Radio Telefónico Throw + Eco"
+
+    elif estilo == "multitap_arena_hall":
+        # Rebote rítmico rápido en estéreo (190ms / 380ms / 570ms / 820ms) con cola de reverb brillante
+        pal_hall = _reverb_estereo(pal_eq, seg=1.45, mezcla=0.52, brillo=4800)[: len(pal_eq)]
+        cola_ms = 1600
+        out = _pista(_dur_ms(remate_crudo) + cola_ms)
+        _sumar(out, remate_crudo, 0.0, 1.0)
+
+        base_ms = _dur_ms(remate_crudo) - 15.0
+        taps = [(0.0, 0, 0.58), (195.0, 1, 0.45), (390.0, 0, 0.34), (620.0, 1, 0.24), (860.0, 0, 0.16)]
+        for offset_ms, c, gan in taps:
+            tramo = np.zeros_like(pal_hall)
+            tramo[:, c] = pal_hall[:, c] * 0.95
+            tramo[:, 1 - c] = pal_hall[:, 1 - c] * 0.30
+            _sumar(out, tramo, base_ms + offset_ms, gan)
+        return out, "Multi-Tap Arena Hall Estéreo"
+
+    else:
+        # "phaser_pingpong_fm": Los ecos rebotan en Ping-Pong pasando por un Phaser espacial de FM
+        pal_ph = _phaser_estereo_fx(pal_rev)
+        cola_ms = 1550
         out = _pista(_dur_ms(remate_crudo) + cola_ms)
         _sumar(out, remate_crudo, 0.0, 1.0)
 
         base_ms = _dur_ms(remate_crudo) - 20.0
-        for rep, c in [(1, 0), (2, 1)]:
-            tramo = np.zeros_like(pal_rev)
-            tramo[:, c] = pal_rev[:, c] * 0.95
-            tramo[:, 1 - c] = pal_rev[:, 1 - c] * 0.25
-            _sumar(out, tramo, base_ms + (rep - 1) * 255.0, 0.58 ** rep)
-
-        # Remate Slow grave en el tercer tiempo
-        _sumar(out, pal_slow, base_ms + 510.0, 0.58)
-        _sumar(out, _filtrar(pal_slow, pasa_bajos=1800), base_ms + 820.0, 0.30)
-        return out, "Eco Ping-Pong + Slow Grave FM"
-
-    elif estilo == "stutter_urbana_mas_eco":
-        # Stutter rítmico en el arranque del remate + Reverb Low + Cola de Eco Ping-Pong
-        n_st = min(int(SR * 0.115), len(remate_crudo) // 4)
-        sil = _fade(_filtrar(remate_crudo[:n_st].copy(), pasa_altos=420, pasa_bajos=3800), 10, 15) * 0.72
-        s_l = np.column_stack((sil[:, 0] * 0.95, sil[:, 1] * 0.20))
-        s_r = np.column_stack((sil[:, 0] * 0.20, sil[:, 1] * 0.95))
-
-        base_voz = np.vstack((s_l, s_r, remate_crudo))
-        low_layer = _capa_reverb_low_fm(remate_crudo)
-        cola_ms = 1550
-        out = _pista(_dur_ms(base_voz) + cola_ms)
-        _sumar(out, base_voz, 0.0, 1.0)
-        _sumar(out, low_layer, _dur_ms(s_l) * 2, 0.38)
-
-        base_ms = _dur_ms(base_voz) - 25.0
         for rep in range(1, 5):
+            pos_ms = base_ms + (rep - 1) * 255.0
             c = rep % 2
-            tramo = np.zeros_like(pal_rev)
-            tramo[:, c] = pal_rev[:, c] * 0.95
-            tramo[:, 1 - c] = pal_rev[:, 1 - c] * 0.25
-            _sumar(out, tramo, base_ms + (rep - 1) * 255.0, 0.56 ** rep)
-        return out, "Stutter Urbana + Reverb Low + Eco"
-
-    else:
-        # "phaser_hall_throw": Última palabra con Phaser espacial FM + 4 rebotes + sombra grave
-        pal_ph = _phaser_estereo_fx(pal_rev)
-        pal_slow = _estirar_pitch_slow(palabra_fin, factor=1.26)
-        cola_ms = 1650
-        out = _pista(_dur_ms(remate_crudo) + cola_ms)
-        _sumar(out, remate_crudo, 0.0, 1.0)
-
-        base_ms = _dur_ms(remate_crudo) - 25.0
-        for rep in range(1, 5):
-            c = (rep + 1) % 2
             tramo = np.zeros_like(pal_ph)
             tramo[:, c] = pal_ph[:, c] * 0.95
-            tramo[:, 1 - c] = pal_ph[:, 1 - c] * 0.30
-            _sumar(out, tramo, base_ms + (rep - 1) * 255.0, 0.58 ** rep)
-        _sumar(out, pal_slow, base_ms + 255.0, 0.38)
-        return out, "Phaser Espacial FM + Eco + Low"
+            tramo[:, 1 - c] = pal_ph[:, 1 - c] * 0.28
+            _sumar(out, tramo, pos_ms, 0.58 ** rep)
+        return out, "Phaser Espacial Ping-Pong FM"
 
 
 def _ducking_por_voz(fondo: np.ndarray, pista_voz: np.ndarray, reduccion_db: float = -3.5) -> np.ndarray:
@@ -852,11 +862,19 @@ def _radio_tuning_dial(dur_ms: float = 750) -> np.ndarray:
 
 
 # ---------------------------------------------------------------------------
-# Sweepers: 4 Intros, 4 Transiciones Notorias y Whip de Pase Hombre/Mujer
+# 6 Intros FM Modernas + 4 Transiciones Notorias + Whip Dúo
 # ---------------------------------------------------------------------------
 
 def sintetizar_intro() -> np.ndarray:
-    estilo = random.choice(["dial_tuning_pips", "urbana_wah_groove", "cyber_glitch_stutter", "stadium_arena_hit"])
+    """Rota al azar entre 6 diseños de Intro FM bien diferenciados."""
+    estilo = random.choice([
+        "dial_tuning_pips",
+        "urbana_wah_groove",
+        "la100_crystal_bells",
+        "pop_funk_slap_intro",
+        "cyber_glitch_stutter",
+        "stadium_arena_hit",
+    ])
     print(f"Estilo de Intro FM elegido: [{estilo}]")
     pista = _pista(2800)
 
@@ -886,6 +904,27 @@ def sintetizar_intro() -> np.ndarray:
         _sumar(pista, _sub_drop_cine(1300), 800, 0.95)
         _sumar(pista, _synth_brass([196.0, 246.94, 293.66, 392.0, 493.88], 1650), 800, 0.90)
         notas = [(783.99, 0, 0.7), (987.77, 130, 0.3), (1174.66, 260, 0.7), (1567.98, 390, 0.5)]
+
+    elif estilo == "la100_crystal_bells":
+        # Barrido luminoso de campanas FM + Whoosh suave + Acorde Cmaj9 abierto
+        _sumar(pista, _whoosh_aerodinamico(780, 350, 5200), 0, 0.85)
+        for idx_b, f_b in enumerate([523.25, 659.25, 783.99, 987.77, 1174.66, 1318.51]):
+            _sumar(pista, _pop_pluck(f_b, 320, pan=0.15 + 0.7 * (idx_b / 5.0)), idx_b * 115, 0.85)
+        _sumar(pista, _sub_drop_cine(1300), 780, 0.95)
+        _sumar(pista, _kick_punch(280), 800, 1.0)
+        _sumar(pista, _synth_brass([261.63, 329.63, 392.00, 493.88, 587.33], 1650), 800, 0.92)
+        notas = [(1046.50, 0, 0.25), (1318.51, 110, 0.75), (1567.98, 220, 0.3), (1975.53, 330, 0.65)]
+
+    elif estilo == "pop_funk_slap_intro":
+        # Groove Funky con Slap Bass rítmico + Doble Laser + Acorde Pop arriba
+        for idx_s, (pos_s, f_s) in enumerate([(0, 55.0), (190, 110.0), (380, 55.0), (570, 98.0), (800, 65.41)]):
+            _sumar(pista, _funky_bass(f_s, 200), pos_s, 0.95)
+            _sumar(pista, _kick_punch(200), pos_s, 0.90)
+        _sumar(pista, _snare_pop(180), 380, 0.90)
+        _sumar(pista, _whoosh_aerodinamico(450, 400, 4800), 350, 0.85)
+        _sumar(pista, _sub_drop_cine(1300), 800, 0.95)
+        _sumar(pista, _synth_brass([261.63, 329.63, 392.00, 523.25], 1600), 800, 0.92)
+        notas = [(1318.51, 0, 0.7), (1046.50, 100, 0.3), (1318.51, 200, 0.7), (1567.98, 300, 0.3), (1760.0, 400, 0.5)]
 
     elif estilo == "cyber_glitch_stutter":
         freqs_g = [1400, 2100, 1050, 2800, 1600, 3200, 1200, 2400]
@@ -920,10 +959,6 @@ def sintetizar_intro() -> np.ndarray:
 
 
 def sintetizar_transicion() -> np.ndarray:
-    """
-    Gran Separador FM Notorio (2.0 s) entre Clima y Noticias:
-    Suena con la cortina del clima ya silenciada para que el oyente sienta claramente el cambio de bloque.
-    """
     estilo = random.choice(["flash_news_radar", "double_laser_whip", "reverse_suction_drop", "tuning_stinger_hit"])
     print(f"Estilo de Transición Clima->Noticias elegido: [{estilo}]")
     pista = _pista(2000)
@@ -976,10 +1011,7 @@ def sintetizar_transicion() -> np.ndarray:
 
 
 def sintetizar_whip_pase_voces() -> np.ndarray:
-    """
-    Efecto rápido y moderno de transición (600ms) para el pase entre la voz de Noticias (ej. Mujer)
-    y la voz del Remate Final (ej. Hombre): Whoosh estéreo rápido + Sub-Impacto + Destello FM.
-    """
+    """Separador rápido (750ms) para el pase entre Hombre y Mujer antes del remate final."""
     pista = _pista(750)
     _sumar(pista, _whoosh_aerodinamico(360, 600, 5200), 0, 0.85)
     _sumar(pista, _laser_drop(260), 280, 0.72)
@@ -1176,7 +1208,7 @@ def construir_ambiente(nombre: str, dur_ms: float) -> np.ndarray:
     if seg is not None:
         base = seg_a_array(seg)
     else:
-        print(f"Generando cortina V9 Pop/Dance ({nombre})...")
+        print(f"Generando cortina V10 Pop/Dance ({nombre})...")
         base = bed_clima_groove(nombre, dur_ms)
     x = _rms(_extender(base, n), REFERENCIA_RMS_DB)
     return _fade(x, 250, 450)
@@ -1188,7 +1220,7 @@ def construir_cama_noticias(dur_ms: float) -> np.ndarray:
     if seg is not None:
         base = seg_a_array(seg)
     else:
-        print("Generando cortina V9 Breaking News...")
+        print("Generando cortina V10 Breaking News...")
         base = bed_noticias_groove(dur_ms)
     x = _rms(_extender(base, n), REFERENCIA_RMS_DB)
     return _fade(x, 200, 2600)
@@ -1221,10 +1253,7 @@ def sintetizar_voz(client, texto: str, nombre_voz: str, audio_config, rate: str 
 
 
 def procesar_voz_seca(x: np.ndarray) -> np.ndarray:
-    """
-    Procesamiento 100% SECO (CERO eco y CERO reverb) para el cuerpo del Clima y de las Noticias.
-    Solo aplica ecualización limpia de micrófono y compresión para máxima nitidez.
-    """
+    """Procesamiento 100% SECO (sin eco ni reverb) para la lectura del clima y las noticias."""
     x = _filtrar(x, pasa_altos=85)
     cuerpo = _filtrar(x, pasa_altos=110, pasa_bajos=240)
     claridad = _filtrar(x, pasa_altos=2400, pasa_bajos=5600)
@@ -1236,7 +1265,7 @@ def procesar_voz_seca(x: np.ndarray) -> np.ndarray:
 
 
 # ---------------------------------------------------------------------------
-# Ensamblado V9 (Tag Inicio FM -> Clima Seco -> Gran Transición -> Noticias Secas -> Whip Dúo -> Remate FM)
+# Ensamblado V10 Clean FM Pro
 # ---------------------------------------------------------------------------
 
 def ensamblar_spot(
@@ -1252,46 +1281,44 @@ def ensamblar_spot(
     cama: np.ndarray | None,
     cama_noticias: np.ndarray,
 ) -> np.ndarray:
-    # 1. Procesamos el Tag Mítico Inicial con efecto Urbana Play / La 100
-    tag_ini_fx, pre_ms_tag, nombre_fx_ini = procesar_tag_inicio_fm(voz_tag_ini_cruda)
-    print(f"FX Tag Inicial: [{nombre_fx_ini}]")
+    # 1. Tag Inicial fluido (sin pre-corte invertido)
+    tag_ini_fx, nombre_fx_ini = procesar_tag_inicio_fm(voz_tag_ini_cruda)
+    print(f"FX Tag Inicial (Sin cortes): [{nombre_fx_ini}]")
 
-    # 2. Procesamos el Remate Final (dicho por el otro locutor tras el pase) con Reverb Low / Eco Ping-Pong / Slow
+    # 2. Remate Final Dúo con los 5 efectos FM limpios (sin slowed)
     remate_final_fx, nombre_fx_fin = procesar_remate_final_fm(voz_remate_cruda)
-    print(f"FX Remate Final Dúo: [{nombre_fx_fin}]")
+    print(f"FX Remate Final Dúo (Limpio): [{nombre_fx_fin}]")
 
-    # Línea de tiempo exacta
-    inicio_habla_tag = 1600.0
-    inicio_pista_tag = max(650.0, inicio_habla_tag - pre_ms_tag)
-    fin_tag_seco = inicio_habla_tag + _dur_ms(voz_tag_ini_cruda)
+    # Línea de tiempo fluida
+    inicio_tag = 1550.0
+    fin_tag_seco = inicio_tag + _dur_ms(voz_tag_ini_cruda)
 
-    # El cuerpo del clima (100% seco) arranca apenas termina el tag inicial
     inicio_clima = fin_tag_seco + 220.0
     fin_clima = inicio_clima + _dur_ms(voz_clima_seca)
 
-    # GRAN TRANSICIÓN NOTORIA CLIMA -> NOTICIAS (1.45 segundos libres de voz para que golpee bien al frente)
+    # Gran Transición Notoria Clima -> Noticias
     inicio_trans = fin_clima + 120.0
     inicio_noticias = inicio_trans + 1450.0
     fin_noticias = inicio_noticias + _dur_ms(voz_noticias_seca)
 
-    # PASE HOMBRE / MUJER AL FINAL: suena el Whip FM y entra el otro locutor con la frase mítica final
-    inicio_whip_duo = fin_noticias - 80.0
-    inicio_remate_duo = fin_noticias + 360.0
+    # Pase Hombre/Mujer -> Frase Final con Efecto FM
+    inicio_whip_duo = fin_noticias - 60.0
+    inicio_remate_duo = fin_noticias + 350.0
     fin_remate_seco = inicio_remate_duo + _dur_ms(voz_remate_cruda)
     fin_cola_remate = inicio_remate_duo + _dur_ms(remate_final_fx)
 
-    # El cierre entra acompañando el eco del remate y la música baja despacito durante 3 segundos
-    inicio_cierre = fin_remate_seco + 120.0
-    total_ms = max(inicio_cierre + _dur_ms(cierre), fin_cola_remate + 1300.0)
+    # Cierre musical y fade-out lento de 3 segundos
+    inicio_cierre = fin_remate_seco + 100.0
+    total_ms = max(inicio_cierre + _dur_ms(cierre), fin_cola_remate + 1350.0)
 
     # 1. Bus de Voces
     bus_voces = _pista(total_ms + 800)
-    _sumar(bus_voces, tag_ini_fx, inicio_pista_tag, 1.0)
+    _sumar(bus_voces, tag_ini_fx, inicio_tag, 1.0)
     _sumar(bus_voces, voz_clima_seca, inicio_clima, 1.0)
     _sumar(bus_voces, voz_noticias_seca, inicio_noticias, 1.0)
     _sumar(bus_voces, remate_final_fx, inicio_remate_duo, 1.0)
 
-    # 2. Bus de Cortinas (Cortina Clima se apaga antes de la Transición; Cortina Noticias arranca tras el golpe)
+    # 2. Bus de Cortinas
     bus_cortinas = _pista(total_ms + 800)
     dur_tramo_clima = int(SR * (inicio_trans + 150.0 - 800.0) / 1000)
     if dur_tramo_clima > 0:
@@ -1304,7 +1331,7 @@ def ensamblar_spot(
 
     bus_cortinas = _ducking_por_voz(bus_cortinas, bus_voces, reduccion_db=-3.5)
 
-    # Fade-out lento y limpio al final (baja despacito mientras rebota el eco final)
+    # Fade-out progresivo y lento en el final para salida limpia
     n_total = int(SR * total_ms / 1000)
     ini_fade_cama = max(0, int(SR * (fin_remate_seco + 150.0) / 1000))
     if n_total > ini_fade_cama:
@@ -1312,7 +1339,7 @@ def ensamblar_spot(
         bus_cortinas[ini_fade_cama:n_total] *= curva_cama[:, None]
         bus_cortinas[n_total:] = 0.0
 
-    # 3. Bus de Sweepers y Transiciones (Al 100% sin ducking)
+    # 3. Bus de Sweepers y Transiciones
     bus_fx = _pista(total_ms + 800)
     _sumar(bus_fx, intro, 0.0, _g(EFECTOS_DB))
     _sumar(bus_fx, trans, inicio_trans, _g(EFECTOS_DB))
@@ -1354,9 +1381,6 @@ def generar_spot(
     audio_config = texttospeech.AudioConfig(audio_encoding=texttospeech.AudioEncoding.MP3)
     ahora = datetime.now(ZONA_HORARIA)
 
-    # Rotación por hora:
-    # Hora Par -> Mujer abre y da Clima | Hombre da Noticias | Mujer vuelve para el Remate Final Mítico.
-    # Hora Impar -> Hombre abre y da Clima | Mujer da Noticias | Hombre vuelve para el Remate Final Mítico.
     if ahora.hour % 2 == 0:
         voz_a, voz_b = "es-US-Neural2-A", "es-US-Neural2-B"
         print("Turno (Hora Par): Mujer (Tag + Clima) -> Hombre (Noticias) -> Pase FM -> Mujer (Remate Final)")
@@ -1364,10 +1388,10 @@ def generar_spot(
         voz_a, voz_b = "es-US-Neural2-B", "es-US-Neural2-A"
         print("Turno (Hora Impar): Hombre (Tag + Clima) -> Mujer (Noticias) -> Pase FM -> Hombre (Remate Final)")
 
-    voz_tag_ini = procesar_voz_seca(sintetizar_voz(client, tag_ini, voz_a, audio_config, rate="1.00"))
+    voz_tag_ini = procesar_voz_seca(sintetizar_voz(client, tag_ini, voz_a, audio_config, rate="1.01"))
     voz_clima = procesar_voz_seca(sintetizar_voz(client, texto_clima, voz_a, audio_config, rate="1.03"))
     voz_noticias = procesar_voz_seca(sintetizar_voz(client, texto_noticias, voz_b, audio_config, rate="1.03"))
-    voz_remate = procesar_voz_seca(sintetizar_voz(client, texto_remate, voz_a, audio_config, rate="0.99"))
+    voz_remate = procesar_voz_seca(sintetizar_voz(client, texto_remate, voz_a, audio_config, rate="1.01"))
 
     intro = cargar_efecto("intro", sintetizar_intro)
     trans = cargar_efecto("transicion", sintetizar_transicion)
@@ -1386,7 +1410,7 @@ def generar_spot(
     )
     final = masterizar(mezcla)
     array_a_seg(final).export(path_salida, format="mp3", bitrate="192k")
-    print(f"¡Spot V9 Duo Imaging ({len(final) / SR:.1f} s) guardado exitosamente en {path_salida}!")
+    print(f"¡Spot V10 Clean FM Pro ({len(final) / SR:.1f} s) guardado exitosamente en {path_salida}!")
 
 
 # ---------------------------------------------------------------------------
@@ -1409,7 +1433,7 @@ def subir_sftp(local_path: str, host: str, port: int, user: str, password: str, 
 
 
 def main():
-    print("=== EJECUTANDO NOGARADIO VERSION V9 DUO IMAGING (URBANA PLAY / LA 100 STYLE) ===")
+    print("=== EJECUTANDO NOGARADIO VERSION V10 CLEAN FM PRO ===")
     sftp_host = os.environ.get("SFTP_HOST")
     sftp_port = int(os.environ.get("SFTP_PORT", "2022"))
     sftp_user = os.environ.get("SFTP_USER")
@@ -1431,7 +1455,7 @@ def main():
     titular_musica = obtener_titular_verificado(FEEDS_MUSICA, 20)
     texto_noticias, texto_remate = armar_textos_noticias_y_remate(titular_mundo, titular_musica)
 
-    print("Generando spot con procesador V9 Duo Imaging...")
+    print("Generando spot con procesador V10 Clean FM Pro...")
     generar_spot(tag_ini, texto_clima, texto_noticias, texto_remate, ambiente_nombre, LOCAL_MP3)
 
     print("Subiendo por SFTP...")
