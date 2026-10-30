@@ -1,29 +1,23 @@
 #!/usr/bin/env python3
 """
 Spot automático de clima, noticias e imaging para AzuraCast (Nogaradio)
-VERSION V11 PROFESSIONAL RADIO IMAGING.
+VERSION V12 PROFESSIONAL RADIO IMAGING (Single-Voice Echo Repeat & Clean Sequencing).
 
-Qué conserva de V10 Clean FM Pro:
-  - Cero micro-cortes en entradas vocales y rampa coseno suave (_extraer_cola_suave_sin_cortes).
-  - Lectura de datos de clima y titulares de noticias 100% SECA y clara al frente.
-  - Los 5 efectos finales limpios de V10 (sin el antiguo "reverb slowed" sucio).
-  - Las 6 intros instrumentales y 4 transiciones de V10 + Fade-out lento de 3 segundos.
-  - Obtención de clima Open-Meteo, verificador RSS anti-repetición y subida SFTP a AzuraCast.
-
-Qué amplía e incorpora en V11:
-  - Intros Vocales + Instrumentales de 3, 6 y 10 segundos con Firma Sonora (Sonic Logo Nogaradio).
-  - Voces Masculinas Graves y Femeninas Juveniles alternándose, interrumpiéndose y en Coro Doble.
-  - Efectos en palabras/segmentos específicos: Glitch Vocal, Pitch Shift Armónico, Reverse Paralelo,
-    Radio Filter, Echo y Stereo Delay.
-  - Banco ampliado con +150 frases (26 IDs, 18 saludos, 16 climas, 20 noticias, 16 pases,
-    26 remates, 20 frases musicales y 12 promos de la app Play Store / Apple Store).
-  - 8 nuevos estilos de Radio Imaging: Electronic, Cinematic, Dance Club, Pop, Urban,
-    Epic Power, Retro Synthwave y Emotional Imaging.
-  - 4 Estructuras distintas de spot y motor anti-repetición consecutiva.
+Cambios principales de V12 respecto a V11:
+  - CERO VOCES SUPERPUESTAS AL UNÍSONO: Se eliminó el coro simultáneo hombre+mujer. Cada frase
+    es pronunciada por una única voz (masculina o femenina, alternando por bloque o por spot).
+  - SISTEMA PROFESIONAL DE REPETICIÓN VOCAL CON ECO (2 a 4 palabras):
+      1) La voz principal pronuncia la frase completa 100% limpia y seca.
+      2) Una vez que termina la voz principal (sin superposición), la MISMA voz repite
+         únicamente las últimas 2 a 4 palabras (ej.: "¡Llegó el momento!" -> "El momento...").
+      3) A esa repetición se le aplica Echo/Stereo Delay, reverberación suave y Fade-Out progresivo.
+  - APLICADO EN INTROS Y EN CIERRES: Funciona tanto en aperturas ("¡Llegó el momento!" -> "El momento...")
+    como en los remates finales, variando aleatoriamente si actúa al inicio, al final o en ambos.
+  - Conserva todas las funciones de V11: Intros de 3s, 6s y 10s, Firma Sonora Nogaradio, +150 frases,
+    8 estilos de Radio Imaging, diálogos secuenciales, clima Open-Meteo, RSS verificado y subida SFTP.
 """
 
 import glob
-import hashlib
 import io
 import json
 import os
@@ -41,6 +35,10 @@ import requests
 from google.cloud import texttospeech
 from pydub import AudioSegment
 
+# ---------------------------------------------------------------------------
+# Configuración General
+# ---------------------------------------------------------------------------
+
 CIUDAD = "Resistencia"
 LAT = -27.4514
 LON = -58.9867
@@ -48,7 +46,7 @@ ZONA_HORARIA = ZoneInfo("America/Argentina/Buenos_Aires")
 
 LOCAL_MP3 = "clima.mp3"
 REMOTE_FILENAME = "clima.mp3"
-HISTORIAL_JSON = ".nogaradio_v11_history.json"
+HISTORIAL_JSON = ".nogaradio_v12_history.json"
 
 FEEDS_MUNDO = [
     "https://feeds.bbci.co.uk/mundo/rss.xml",
@@ -71,13 +69,13 @@ CAMA_DB_LIBRE = -4.5
 CAMA_DB_VOZ = -10.5
 
 # ---------------------------------------------------------------------------
-# Motor Anti-Repetición y Rotación Inteligente V11
+# Motor Anti-Repetición y Rotación Inteligente V12
 # ---------------------------------------------------------------------------
 
-class SelectorRotativoV11:
+class SelectorRotativoV12:
     """
-    Garantiza que no se repitan frases, estilos de imaging, intros ni estructuras
-    dentro del mismo spot ni en corridas consecutivas.
+    Evita repeticiones consecutivas de frases, estilos musicales, estructuras y efectos
+    tanto dentro del mismo spot como entre corridas sucesivas.
     """
     def __init__(self, path_historial: str):
         self.path = path_historial
@@ -114,20 +112,33 @@ class SelectorRotativoV11:
         if not disponibles:
             disponibles = [op for op in opciones if op != ultimo] or list(opciones)
 
-        # Semilla combinada de tiempo real + entropía del sistema para rotación real en GitHub Actions
         elegido = random.choice(disponibles)
         self.usados_en_sesion[categoria].add(elegido)
         self.ultimo_estado[categoria] = elegido
         return elegido
 
 
-SELECTOR = SelectorRotativoV11(HISTORIAL_JSON)
+SELECTOR = SelectorRotativoV12(HISTORIAL_JSON)
 
 # ---------------------------------------------------------------------------
-# BANCO DE FRASES AMPLIADO V11 (+150 Frases en 8 Categorías)
+# BANCO DE FRASES AMPLIADO V12 (+160 Frases en 9 Categorías)
 # ---------------------------------------------------------------------------
 
-# 1) 26 Frases de Identificación (incluye las frases clave solicitadas)
+# Frases de Entrada / Apertura ideales para Repetición con Eco de las últimas 2 a 4 palabras
+BANCO_FRASES_ENTRADA_IMPACTO = [
+    "¡Llegó el momento!",
+    "¡Ya estamos en el aire!",
+    "¡Subí el volumen ahora!",
+    "¡Sentí toda la energía!",
+    "¡Empezamos una nueva hora!",
+    "¡Conectate con tu música!",
+    "¡Prendete a la sintonía!",
+    "¡Viví el mejor sonido!",
+    "¡Activamos tu radio!",
+    "¡La música suena fuerte!",
+]
+
+# 1) 26 Frases de Identificación
 BANCO_IDENTIFICACION = [
     "La música no se detiene.",
     "Estás conectado.",
@@ -157,7 +168,7 @@ BANCO_IDENTIFICACION = [
     "Desde Resistencia para todo el mundo, Nogaradio.",
 ]
 
-# 2) 18 Saludos clasificados por momento del día (6 mañana, 6 tarde, 6 noche)
+# 2) 18 Saludos clasificados por momento del día
 BANCO_SALUDOS_MANANA = [
     "Hola, muy buenos días",
     "Buenos días, qué bueno que estés ahí",
@@ -249,7 +260,7 @@ BANCO_TRANSICIONES_LOCUTORES = [
     "Ritmo e información al instante, vamos a los titulares.",
 ]
 
-# 6) 26 Remates Finales
+# 6) 26 Remates Finales (con cierres de 2 a 4 palabras ideales para la repetición con eco)
 BANCO_REMATES_FINALES = [
     "Seguí con esta programación. En Nogaradio, seguimos con vos.",
     "Descargá la app en Play Store y Apple Store. Escuchás Nogaradio, sonando para vos.",
@@ -372,7 +383,7 @@ def saludo_segun_hora(hora_actual: int) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Obtención de Clima y Noticias RSS (Conservado de V10 + Banco V11)
+# Obtención de Clima y Noticias RSS
 # ---------------------------------------------------------------------------
 
 def obtener_clima(reintentos: int = 3, espera: int = 5) -> dict | None:
@@ -505,7 +516,7 @@ def obtener_titular_verificado(lista_feeds: list[str], categoria: str, cantidad:
 
 
 # ---------------------------------------------------------------------------
-# Motor DSP Base + Herramientas de Audio V10 y V11
+# Motor DSP Base
 # ---------------------------------------------------------------------------
 
 def seg_a_array(seg: AudioSegment) -> np.ndarray:
@@ -629,7 +640,6 @@ def _recortar_silencio(x: np.ndarray, umbral: float = 0.015) -> np.ndarray:
 
 
 def _extraer_cola_suave_sin_cortes(x: np.ndarray) -> np.ndarray:
-    """Rampa coseno suave de V10 para extraer el final de una frase sin cortes ni clics."""
     n = len(x)
     min_m = int(SR * 0.34)
     max_m = min(int(SR * 0.68), int(n * 0.60))
@@ -735,112 +745,196 @@ def _ducking_por_voz(fondo: np.ndarray, pista_voz: np.ndarray, reduccion_db: flo
 
 
 # ---------------------------------------------------------------------------
-# NUEVOS PROCESADORES VOCALES V11 (Palabras Específicas, Coros y Diálogos)
+# NUEVO SISTEMA V12: REPETICIÓN VOCAL CON ECO (ÚLTIMAS 2 A 4 PALABRAS, MISMA VOZ, SIN SUPERPOSICIÓN)
+# ---------------------------------------------------------------------------
+
+def extraer_ultimas_palabras_texto(texto: str, min_pal: int = 2, max_pal: int = 4) -> str:
+    """
+    Extrae únicamente las últimas 2 a 4 palabras de una frase para que la repetición
+    con eco nunca repita la oración entera.
+    Ejemplos:
+      - "¡Llegó el momento!" -> "El momento..."
+      - "La música no se detiene." -> "No se detiene..."
+      - "Seguí con esta programación. En Nogaradio, seguimos con vos." -> "Seguimos con vos..."
+      - "Esto es Nogaradio." -> "Es Nogaradio..."
+    """
+    limpio = texto.strip()
+    # Si hay varias oraciones o comas finales, priorizamos la última cláusula si tiene entre 2 y 4 palabras
+    fragmentos = [f.strip() for f in re.split(r'[.!?]+', limpio) if f.strip()]
+    ultima_oracion = fragmentos[-1] if fragmentos else limpio
+
+    # Quitamos signos de apertura/cierre para contar las palabras limpias
+    palabras_todas = [re.sub(r'^[¡¿"«]+|[!?"».,:;]+$', '', p) for p in limpio.split()]
+    palabras_todas = [p for p in palabras_todas if p]
+
+    palabras_ult = [re.sub(r'^[¡¿"«]+|[!?"».,:;]+$', '', p) for p in ultima_oracion.split()]
+    palabras_ult = [p for p in palabras_ult if p]
+
+    # Si la última cláusula tras coma tiene entre 2 y 4 palabras (ej. ", seguimos con vos"), la usamos
+    clausulas_coma = [c.strip() for c in ultima_oracion.split(",") if c.strip()]
+    if len(clausulas_coma) > 1:
+        pal_coma = [re.sub(r'^[¡¿"«]+|[!?"».,:;]+$', '', p) for p in clausulas_coma[-1].split()]
+        pal_coma = [p for p in pal_coma if p]
+        if min_pal <= len(pal_coma) <= max_pal:
+            res = " ".join(pal_coma)
+            return res[0].upper() + res[1:] + "."
+
+    # Nunca repetir la frase completa: si la oración total tiene <= 4 palabras, tomamos las últimas (N - 1) palabras
+    if len(palabras_todas) <= 2:
+        seleccion = palabras_todas[-1:]
+    elif len(palabras_todas) <= 4:
+        # Ej: "¡Llegó el momento!" (3 palabras) -> toma las últimas 2 ("el momento")
+        cant = max(2, len(palabras_todas) - 1)
+        seleccion = palabras_todas[-cant:]
+    else:
+        # Frase larga: toma entre 2 y 4 palabras finales (preferencia 3 palabras)
+        cant = min(3, len(palabras_ult)) if len(palabras_ult) >= 2 else min(3, len(palabras_todas))
+        seleccion = palabras_ult[-cant:] if len(palabras_ult) >= 2 else palabras_todas[-cant:]
+
+    res = " ".join(seleccion)
+    if not res:
+        return texto
+    return res[0].upper() + res[1:] + "."
+
+
+def procesar_cola_eco_profesional(voz_repeticion_seca: np.ndarray, estilo_eco: str = "pingpong_fade") -> np.ndarray:
+    """
+    Toma el audio de la repetición (las últimas 2-4 palabras dichas por la MISMA voz)
+    y le aplica:
+      1) Filtro espacial cálido de estudio (300 Hz - 3800 Hz).
+      2) Echo / Stereo Delay sincronizado con rebotes L/R.
+      3) Reverberación suave envolvente.
+      4) Reducción progresiva de volumen (Fade-Out exponencial suave) hasta desaparecer limpio.
+    """
+    base = _filtrar(voz_repeticion_seca.copy(), pasa_altos=300, pasa_bajos=3800)
+
+    if estilo_eco == "chorus_hall_fade":
+        base = _chorus_estereo_fm(base)
+    elif estilo_eco == "phaser_stereo_fade":
+        base = _phaser_estereo_fx(base)
+    elif estilo_eco == "radio_warm_fade":
+        base = np.tanh(_filtrar(base, pasa_altos=420, pasa_bajos=2900) * 1.6) * 0.85
+
+    # Reverberación suave en la repetición
+    base_rev = _reverb_estereo(base, seg=1.15, mezcla=0.38, brillo=4200)[: len(base)]
+    dur_rep_ms = _dur_ms(base_rev)
+
+    # Creamos la pista que contiene la primera repetición + sus 3 ecos decrecientes con Fade-Out
+    cola_extra_ms = 1250.0
+    total_cola_ms = dur_rep_ms + cola_extra_ms
+    pista_eco = _pista(total_cola_ms)
+
+    # Aparición 1: La repetición principal de las últimas palabras (a -2.8 dB respecto a la voz líder)
+    _sumar(pista_eco, base_rev, 0.0, _g(-2.8))
+
+    # Rebotes de Echo/Delay posteriores (espaciados cada 270 ms en Ping-Pong estéreo decreciente)
+    eco_filtrado = _filtrar(base_rev, pasa_altos=380, pasa_bajos=3200)
+    rebotes = [
+        (270.0, 0, _g(-7.5)),   # Rebote 1 Izquierda
+        (540.0, 1, _g(-12.0)),  # Rebote 2 Derecha
+        (810.0, 0, _g(-16.5)),  # Rebote 3 Difuso final
+    ]
+    for offset_ms, canal, ganancia in rebotes:
+        tramo = np.zeros_like(eco_filtrado)
+        tramo[:, canal] = eco_filtrado[:, canal] * 0.92
+        tramo[:, 1 - canal] = eco_filtrado[:, 1 - canal] * 0.35
+        _sumar(pista_eco, tramo, offset_ms, ganancia)
+
+    # Curva global de reducción progresiva de volumen (Fade-Out suave de principio a fin de la cola)
+    n = len(pista_eco)
+    curva_fade_out = np.linspace(1.0, 0.0, n) ** 1.35
+    pista_eco *= curva_fade_out[:, None]
+    return _fade(pista_eco, 18, 120)
+
+
+def sintetizar_frase_con_repeticion_eco(
+    client,
+    texto_completo: str,
+    perfil_voz: str,
+    audio_config,
+    activar_repeticion_eco: bool = True,
+) -> tuple[np.ndarray, float, str]:
+    """
+    Genera una locución con el sistema profesional V12:
+      - Voz Principal: Una sola voz (masculina o femenina según 'perfil_voz') dice la frase completa limpia y seca.
+      - Si 'activar_repeticion_eco' es True:
+          * Espera a que termine por completo la voz principal (pausa limpia de 85 ms, CERO superposición).
+          * La MISMA voz repite únicamente las últimas 2 a 4 palabras con Echo/Delay, reverb suave y Fade-Out.
+    Devuelve: (audio_completo, duracion_voz_principal_seca_ms, descripcion_efecto)
+    """
+    voz_principal = sintetizar_voz_perfil(client, texto_completo, perfil_voz, audio_config)
+    dur_seca_ms = _dur_ms(voz_principal)
+
+    if not activar_repeticion_eco:
+        # Cierre limpio sin repetición (solo un micro-fade natural)
+        cola_corta = np.zeros((int(SR * 0.12), 2))
+        return np.vstack((voz_principal, cola_corta)), dur_seca_ms, "Voz Limpia Directa (Sin Repetición)"
+
+    texto_ultimas_palabras = extraer_ultimas_palabras_texto(texto_completo)
+    estilo_eco = SELECTOR.elegir("estilo_eco_v12", [
+        "pingpong_fade",
+        "chorus_hall_fade",
+        "phaser_stereo_fade",
+        "radio_warm_fade",
+    ])
+
+    # Sintetizamos las últimas 2-4 palabras con la MISMA voz exacta
+    voz_rep_seca = sintetizar_voz_perfil(client, texto_ultimas_palabras, perfil_voz, audio_config)
+    cola_eco_fade = procesar_cola_eco_profesional(voz_rep_seca, estilo_eco=estilo_eco)
+
+    # Pausa de 85 ms entre el fin de la voz principal y el inicio de la repetición (CERO superposición)
+    pausa_sin_solapar = np.zeros((int(SR * 0.085), 2))
+    audio_final = np.vstack((voz_principal, pausa_sin_solapar, cola_eco_fade))
+
+    desc = f"Voz [{perfil_voz}] -> Repite '{texto_ultimas_palabras}' ({estilo_eco})"
+    return audio_final, dur_seca_ms, desc
+
+
+# ---------------------------------------------------------------------------
+# Procesadores Vocales para Palabras Específicas y Diálogos Secuenciales
 # ---------------------------------------------------------------------------
 
 def aplicar_fx_palabra_especifica(x: np.ndarray, tipo_fx: str) -> np.ndarray:
     """
-    Aplica efectos de Radio Imaging a palabras o frases puntuales (IDs, frases musicales,
-    menciones de marca o promos) sin afectar los bloques secos de noticias/clima:
-      - 'glitch_vocal': Micro-repetición rítmica de la sílaba inicial en estéreo + voz intacta.
-      - 'pitch_shift_armonia': Armonía paralela octava/quinta limpia en estéreo + presencia.
-      - 'reverse_tail_swell': Swell invertido suave en pista paralela que envuelve la frase.
-      - 'radio_filter_band': Efecto megáfono/radio FM con apertura progresiva.
-      - 'echo_stereo_delay': Delay Ping-Pong sincronizado en la cola de la palabra clave.
+    Aplica efectos puntuales a frases musicales o promos intermedias usando una sola voz
+    y sin superponer locutores distintos.
     """
     cola = _extraer_cola_suave_sin_cortes(x)
     cola_eq = _filtrar(cola, pasa_altos=380, pasa_bajos=3600)
 
     if tipo_fx == "glitch_vocal":
-        # Tartamudeo digital limpio sobre los primeros 95ms antes de soltar la palabra entera
-        n_g = min(int(SR * 0.095), len(x) // 4)
-        trozo_g = _fade(_filtrar(x[:n_g].copy(), pasa_altos=450, pasa_bajos=4200), 8, 12) * 0.72
+        n_g = min(int(SR * 0.090), len(x) // 4)
+        trozo_g = _fade(_filtrar(x[:n_g].copy(), pasa_altos=450, pasa_bajos=4200), 8, 12) * 0.68
         g_l = np.column_stack((trozo_g[:, 0], trozo_g[:, 1] * 0.2))
         g_r = np.column_stack((trozo_g[:, 0] * 0.2, trozo_g[:, 1]))
         cuerpo = np.vstack((g_l, g_r, x))
-        out = np.pad(cuerpo, ((0, int(SR * 0.55)), (0, 0)))
-        _sumar(out, _stereo_delay(cola_eq, 190, 285, 0.35, 0.45), _dur_ms(cuerpo) - 20.0, 0.55)
-        return out
+        return _fade(cuerpo, 10, 30)
 
     elif tipo_fx == "pitch_shift_armonia":
-        # Agrega una capa doblada con micro-pitch (+12 cents L / -12 cents R) + sub-armónico suave
-        n = len(x)
-        idx = np.arange(n, dtype=np.float64)
-        up = np.interp(np.clip(idx * 1.008, 0, n - 1), idx, x[:, 0])
-        dn = np.interp(np.clip(idx * 0.992, 0, n - 1), idx, x[:, 1])
-        armonia = _filtrar(np.column_stack((up, dn)), pasa_altos=200, pasa_bajos=4800)
-        mezcla = x * 0.82 + armonia * 0.38
-        out = np.pad(mezcla, ((0, int(SR * 0.60)), (0, 0)))
-        _sumar(out, cola_eq, _dur_ms(mezcla) - 15.0, 0.48)
-        return out
-
-    elif tipo_fx == "reverse_tail_swell":
-        # El locutor habla sin cortes, y por debajo en estéreo sube la cola invertida hacia el final
-        rev = _filtrar(cola_eq[::-1].copy(), pasa_altos=400, pasa_bajos=3400)
-        rev = _reverb_estereo(rev, seg=0.9, mezcla=0.65, brillo=4000)[: len(rev)]
-        curva = (np.linspace(0.0, 1.0, len(rev)) ** 2.0)[:, None]
-        rev_swell = _fade(rev * curva * 0.42, 25, 25)
-        out = np.pad(x, ((0, int(SR * 0.70)), (0, 0)))
-        pos_rev = max(0.0, _dur_ms(x) - _dur_ms(rev_swell))
-        _sumar(out, rev_swell, pos_rev, 0.85)
-        _sumar(out, _stereo_delay(cola_eq, 210, 315, 0.38, 0.45), _dur_ms(x) - 15.0, 0.52)
-        return out
+        voz_ancha = _chorus_estereo_fm(x)
+        return _fade(voz_ancha, 10, 30)
 
     elif tipo_fx == "radio_filter_band":
-        # Filtra la primera mitad con efecto Radio Transmisor FM y abre limpio en la palabra final
         cuerpo = x.copy()
-        mitad = int(len(cuerpo) * 0.55)
-        radio = np.tanh(_filtrar(cuerpo[:mitad], pasa_altos=550, pasa_bajos=2700) * 2.1) * 0.78
-        curva = np.linspace(0.9, 0.0, mitad)[:, None]
-        cuerpo[:mitad] = cuerpo[:mitad] * (1.0 - curva * 0.70) + radio * (curva * 0.80)
-        out = np.pad(cuerpo, ((0, int(SR * 0.65)), (0, 0)))
-        _sumar(out, _stereo_delay(cola_eq, 220, 330, 0.35, 0.45), _dur_ms(cuerpo) - 15.0, 0.50)
-        return out
+        mitad = int(len(cuerpo) * 0.45)
+        radio = np.tanh(_filtrar(cuerpo[:mitad], pasa_altos=550, pasa_bajos=2700) * 2.0) * 0.78
+        curva = np.linspace(0.85, 0.0, mitad)[:, None]
+        cuerpo[:mitad] = cuerpo[:mitad] * (1.0 - curva * 0.65) + radio * (curva * 0.75)
+        return _fade(cuerpo, 10, 30)
 
     else:
-        # "echo_stereo_delay": Voz ancha con Stereo Delay Ping-Pong marcado
-        voz_ancha = _chorus_estereo_fm(x)
-        out = np.pad(voz_ancha, ((0, int(SR * 0.85)), (0, 0)))
-        base_ms = _dur_ms(voz_ancha) - 20.0
-        for rep, c in [(1, 0), (2, 1), (3, 0)]:
-            tramo = np.zeros_like(cola_eq)
-            tramo[:, c] = cola_eq[:, c] * 0.95
-            tramo[:, 1 - c] = cola_eq[:, 1 - c] * 0.25
-            _sumar(out, tramo, base_ms + (rep - 1) * 235.0, 0.54 ** rep)
-        return out
-
-
-def crear_voz_doble_coro(voz_hombre: np.ndarray, voz_mujer: np.ndarray) -> np.ndarray:
-    """
-    Superpone la voz masculina grave y la voz femenina juvenil diciendo la misma frase clave
-    (Coro / Stack Vocal de FM), alineando sus duraciones y abriéndolas en el campo estéreo.
-    """
-    n_target = max(len(voz_hombre), len(voz_mujer))
-    idx_t = np.linspace(0, 1, n_target)
-
-    def _ajustar_largo(v: np.ndarray) -> np.ndarray:
-        idx_v = np.linspace(0, 1, len(v))
-        l = np.interp(idx_t, idx_v, v[:, 0])
-        r = np.interp(idx_t, idx_v, v[:, 1])
-        return np.column_stack((l, r))
-
-    h_sync = _ajustar_largo(voz_hombre)
-    m_sync = _ajustar_largo(voz_mujer)
-
-    # Hombre firme al centro-izquierda, Mujer brillante al centro-derecha + copia Chorus
-    coro_l = h_sync[:, 0] * 0.68 + m_sync[:, 0] * 0.52
-    coro_r = h_sync[:, 1] * 0.52 + m_sync[:, 1] * 0.68
-    coro = _chorus_estereo_fm(np.column_stack((coro_l, coro_r)))
-    return _pico(coro, 0.94)
+        # "echo_stereo_delay" sin pisar la frase principal (empieza después de terminar la frase)
+        pausa = np.zeros((int(SR * 0.070), 2))
+        cola_delay = procesar_cola_eco_profesional(cola_eq, estilo_eco="pingpong_fade")
+        return np.vstack((x, pausa, cola_delay * 0.75))
 
 
 def ensamblar_dialogo_interactivo(
     segmentos: list[tuple[np.ndarray, float]],
 ) -> np.ndarray:
     """
-    Une intervenciones de Hombre y Mujer donde pueden responderse al instante,
-    interrumpirse (solapamiento negativo, ej. -70ms) o complementarse.
-    Cada elemento de 'segmentos' es (audio_array, offset_ms_respecto_al_anterior).
+    Une intervenciones de Hombre y Mujer de forma secuencial y limpia.
+    En V12 aseguramos que ningún gap sea negativo para que jamás hablen dos voces encimadas.
     """
     if not segmentos:
         return _pista(100)
@@ -849,7 +943,9 @@ def ensamblar_dialogo_interactivo(
     posiciones = []
     max_fin_ms = 0.0
     for seg, gap_ms in segmentos:
-        cursor_ms = max(0.0, cursor_ms + gap_ms)
+        # Garantizamos gap >= 45 ms para transición ágil pero sin superposición de voces
+        gap_seguro = max(45.0, gap_ms) if cursor_ms > 0 else max(0.0, gap_ms)
+        cursor_ms = cursor_ms + gap_seguro
         posiciones.append((seg, cursor_ms))
         fin_seg = cursor_ms + _dur_ms(seg)
         if fin_seg > max_fin_ms:
@@ -863,143 +959,7 @@ def ensamblar_dialogo_interactivo(
 
 
 # ---------------------------------------------------------------------------
-# Efectos Vocales de Inicio y Remate Final Conservados de V10
-# ---------------------------------------------------------------------------
-
-def procesar_tag_inicio_fm(tag_crudo: np.ndarray) -> tuple[np.ndarray, str]:
-    estilo = SELECTOR.elegir(
-        "fx_tag_ini",
-        ["stereo_widener_pingpong", "radio_fm_open_echo", "crystal_slap_stereo", "glitch_vocal_intro"]
-    )
-    if estilo == "glitch_vocal_intro":
-        return aplicar_fx_palabra_especifica(tag_crudo, "glitch_vocal"), "Glitch Vocal + Stereo Delay"
-
-    cola_pal = _extraer_cola_suave_sin_cortes(tag_crudo)
-    eco_pal = _filtrar(cola_pal, pasa_altos=380, pasa_bajos=3500)
-    eco_rev = _reverb_estereo(eco_pal, seg=0.95, mezcla=0.38, brillo=4200)[: len(eco_pal)]
-
-    if estilo == "stereo_widener_pingpong":
-        voz_ancha = _chorus_estereo_fm(tag_crudo)
-        out = np.pad(voz_ancha, ((0, int(SR * 0.65)), (0, 0)))
-        base_ms = _dur_ms(voz_ancha) - 20.0
-        for rep, c in [(1, 0), (2, 1)]:
-            tramo = np.zeros_like(eco_rev)
-            tramo[:, c] = eco_rev[:, c] * 0.95
-            tramo[:, 1 - c] = eco_rev[:, 1 - c] * 0.25
-            _sumar(out, tramo, base_ms + (rep - 1) * 230.0, 0.50 ** rep)
-        return out, "Stereo Widener + Ping-Pong Limpio"
-
-    elif estilo == "radio_fm_open_echo":
-        cuerpo = tag_crudo.copy()
-        mitad = len(cuerpo) // 2
-        radio = np.tanh(_filtrar(cuerpo[:mitad], pasa_altos=500, pasa_bajos=3000) * 1.9) * 0.78
-        curva = np.linspace(0.85, 0.0, mitad)[:, None]
-        cuerpo[:mitad] = cuerpo[:mitad] * (1.0 - curva * 0.65) + radio * (curva * 0.75)
-
-        out = np.pad(cuerpo, ((0, int(SR * 0.60)), (0, 0)))
-        _sumar(out, eco_rev, _dur_ms(cuerpo) - 15.0, 0.48)
-        return out, "Filtro FM Open + Eco Estéreo"
-
-    else:
-        out = np.pad(tag_crudo, ((0, int(SR * 0.65)), (0, 0)))
-        slap = _filtrar(tag_crudo, pasa_altos=400, pasa_bajos=3800) * 0.22
-        _sumar(out, np.column_stack((slap[:, 0], slap[:, 1] * 0.3)), 95.0, 1.0)
-        _sumar(out, eco_rev, _dur_ms(tag_crudo) - 15.0, 0.48)
-        return out, "Crystal Slapback FM + Cola"
-
-
-def procesar_remate_final_fm(remate_crudo: np.ndarray) -> tuple[np.ndarray, str]:
-    """Los 5 efectos finales limpios de V10 (sin Reverb Slowed)."""
-    estilo = SELECTOR.elegir("fx_remate_fin", [
-        "pingpong_cristal_fm",
-        "chorus_widener_eco",
-        "radio_telefonico_throw",
-        "multitap_arena_hall",
-        "phaser_pingpong_fm",
-    ])
-
-    palabra_fin = _extraer_cola_suave_sin_cortes(remate_crudo)
-    pal_eq = _filtrar(palabra_fin, pasa_altos=360, pasa_bajos=3600)
-    pal_rev = _reverb_estereo(pal_eq, seg=1.20, mezcla=0.42, brillo=4500)[: len(pal_eq)]
-
-    if estilo == "pingpong_cristal_fm":
-        cola_ms = 1550
-        out = _pista(_dur_ms(remate_crudo) + cola_ms)
-        _sumar(out, remate_crudo, 0.0, 1.0)
-        base_ms = _dur_ms(remate_crudo) - 20.0
-        for rep in range(1, 5):
-            pos_ms = base_ms + (rep - 1) * 260.0
-            c = rep % 2
-            tramo = np.zeros_like(pal_rev)
-            tramo[:, c] = pal_rev[:, c] * 0.95
-            tramo[:, 1 - c] = pal_rev[:, 1 - c] * 0.25
-            _sumar(out, tramo, pos_ms, 0.58 ** rep)
-        return out, "Eco Ping-Pong Cristal FM"
-
-    elif estilo == "chorus_widener_eco":
-        voz_ancha = _chorus_estereo_fm(remate_crudo)
-        pal_ancha = _chorus_estereo_fm(pal_rev)
-        cola_ms = 1550
-        out = _pista(_dur_ms(voz_ancha) + cola_ms)
-        _sumar(out, voz_ancha, 0.0, 1.0)
-        base_ms = _dur_ms(voz_ancha) - 20.0
-        for rep in range(1, 5):
-            pos_ms = base_ms + (rep - 1) * 255.0
-            c = (rep + 1) % 2
-            tramo = np.zeros_like(pal_ancha)
-            tramo[:, c] = pal_ancha[:, c] * 0.95
-            tramo[:, 1 - c] = pal_ancha[:, 1 - c] * 0.30
-            _sumar(out, tramo, pos_ms, 0.58 ** rep)
-        return out, "Stereo Chorus Widener + Ping-Pong"
-
-    elif estilo == "radio_telefonico_throw":
-        pal_radio = np.tanh(_filtrar(palabra_fin, pasa_altos=550, pasa_bajos=2600) * 2.1) * 0.68
-        pal_radio = _reverb_estereo(pal_radio, seg=1.1, mezcla=0.38, brillo=3200)[: len(pal_radio)]
-        cola_ms = 1550
-        out = _pista(_dur_ms(remate_crudo) + cola_ms)
-        _sumar(out, remate_crudo, 0.0, 1.0)
-        base_ms = _dur_ms(remate_crudo) - 15.0
-        for rep in range(1, 5):
-            pos_ms = base_ms + (rep - 1) * 250.0
-            c = rep % 2
-            tramo = np.zeros_like(pal_radio)
-            tramo[:, c] = pal_radio[:, c] * 0.95
-            tramo[:, 1 - c] = pal_radio[:, 1 - c] * 0.25
-            _sumar(out, tramo, pos_ms, 0.60 ** rep)
-        return out, "Filtro Radio Telefónico Throw + Eco"
-
-    elif estilo == "multitap_arena_hall":
-        pal_hall = _reverb_estereo(pal_eq, seg=1.45, mezcla=0.52, brillo=4800)[: len(pal_eq)]
-        cola_ms = 1600
-        out = _pista(_dur_ms(remate_crudo) + cola_ms)
-        _sumar(out, remate_crudo, 0.0, 1.0)
-        base_ms = _dur_ms(remate_crudo) - 15.0
-        taps = [(0.0, 0, 0.58), (195.0, 1, 0.45), (390.0, 0, 0.34), (620.0, 1, 0.24), (860.0, 0, 0.16)]
-        for offset_ms, c, gan in taps:
-            tramo = np.zeros_like(pal_hall)
-            tramo[:, c] = pal_hall[:, c] * 0.95
-            tramo[:, 1 - c] = pal_hall[:, 1 - c] * 0.30
-            _sumar(out, tramo, base_ms + offset_ms, gan)
-        return out, "Multi-Tap Arena Hall Estéreo"
-
-    else:
-        pal_ph = _phaser_estereo_fx(pal_rev)
-        cola_ms = 1550
-        out = _pista(_dur_ms(remate_crudo) + cola_ms)
-        _sumar(out, remate_crudo, 0.0, 1.0)
-        base_ms = _dur_ms(remate_crudo) - 20.0
-        for rep in range(1, 5):
-            pos_ms = base_ms + (rep - 1) * 255.0
-            c = rep % 2
-            tramo = np.zeros_like(pal_ph)
-            tramo[:, c] = pal_ph[:, c] * 0.95
-            tramo[:, 1 - c] = pal_ph[:, 1 - c] * 0.28
-            _sumar(out, tramo, pos_ms, 0.58 ** rep)
-        return out, "Phaser Espacial Ping-Pong FM"
-
-
-# ---------------------------------------------------------------------------
-# Sintetizadores Musicales y Firma Sonora de Nogaradio (Sonic Logo V11)
+# Sintetizadores Musicales y Firma Sonora de Nogaradio (Sonic Logo)
 # ---------------------------------------------------------------------------
 
 def _synth_brass(freqs: list[float], dur_ms: float, corte_lp: float = 3600.0) -> np.ndarray:
@@ -1110,33 +1070,28 @@ def _radio_tuning_dial(dur_ms: float = 750) -> np.ndarray:
 
 
 def _sonic_logo_nogaradio() -> np.ndarray:
-    """
-    Firma Sonora Oficial y Reconocible de Nogaradio (4 sílabas musicales: NO-GA-RA-DIO):
-    Motivo en Re Mayor 9 (D5 -> F#5 -> A5 -> D6) con campanas FM en estéreo + colchón cálido.
-    """
+    """Firma Sonora Oficial de Nogaradio (D5 -> F#5 -> A5 -> D6)."""
     pista = _pista(1450)
-    # 4 notas que cantan rítmicamente "No - ga - ra - dio"
     motivo = [
-        (587.33, 0, 320, 0.25),     # NO (D5)
-        (739.99, 130, 320, 0.75),   # GA (F#5)
-        (880.00, 260, 380, 0.30),   # RA (A5)
-        (1174.66, 410, 950, 0.65),  # DIO (D6 brillante sostenido)
+        (587.33, 0, 320, 0.25),
+        (739.99, 130, 320, 0.75),
+        (880.00, 260, 380, 0.30),
+        (1174.66, 410, 950, 0.65),
     ]
     for freq, pos_ms, dur, pan in motivo:
         _sumar(pista, _pop_pluck(freq, dur, pan=pan), pos_ms, 0.95)
         _sumar(pista, _pop_pluck(freq * 2.0, dur * 0.7, pan=1.0 - pan), pos_ms, 0.35)
 
-    # Acorde de respaldo Dmaj9 en la cuarta nota
     _sumar(pista, _synth_brass([293.66, 369.99, 440.00, 587.33, 659.25], 950, corte_lp=3200), 410, 0.65)
     pista = _stereo_delay(pista, 195, 290, 0.38, 0.34)
     return _fade(_reverb_estereo(pista, seg=1.1, mezcla=0.32)[: len(pista)], 10, 300)
 
 
 # ---------------------------------------------------------------------------
-# 8 NUEVOS ESTILOS DE RADIO IMAGING V11 (Cortinas + Sweepers)
+# 8 Estilos de Radio Imaging
 # ---------------------------------------------------------------------------
 
-ESTILOS_IMAGING_V11 = [
+ESTILOS_IMAGING_V12 = [
     "electronic_imaging",
     "cinematic_imaging",
     "dance_club_imaging",
@@ -1149,14 +1104,9 @@ ESTILOS_IMAGING_V11 = [
 
 
 def generar_bed_estilo_imaging(estilo: str, modo_clima: str, dur_ms: float) -> np.ndarray:
-    """
-    Genera la cortina musical según los 8 nuevos estilos de Radio Imaging profesional
-    integrando sutilmente la atmósfera climática actual.
-    """
     pista = _pista(dur_ms)
     t = _t(dur_ms)
 
-    # Definición de BPM, progresión armónica y carácter según el estilo elegido
     perfiles = {
         "electronic_imaging": (124.0, [
             ([220.0, 261.63, 329.63, 392.0], [440.0, 659.25, 880.0, 659.25], 55.0),
@@ -1211,11 +1161,9 @@ def generar_bed_estilo_imaging(estilo: str, modo_clima: str, dur_ms: float) -> n
         _sumar(musica, _synth_brass(pad_f, compas_ms + 150, corte_lp=corte_filtro), ini_c, 0.56)
 
         if estilo == "retro_synthwave":
-            # Bajo en corcheas estilo 80s Synthwave
             for k in range(8):
                 _sumar(musica, _funky_bass(bajo_f if k % 2 == 0 else bajo_f * 2.0, beat_ms * 0.45), ini_c + k * (beat_ms * 0.5), 0.78)
         elif estilo == "urban_imaging":
-            # Sub-808 largo sincopado estilo Urbano
             for pos_u in [0.0, beat_ms * 1.5, beat_ms * 2.5]:
                 _sumar(musica, _funky_bass(bajo_f, beat_ms * 1.1), ini_c + pos_u, 0.85)
         else:
@@ -1223,7 +1171,6 @@ def generar_bed_estilo_imaging(estilo: str, modo_clima: str, dur_ms: float) -> n
                 f_b = bajo_f * 2.0 if k in (3, 7) else bajo_f
                 _sumar(musica, _funky_bass(f_b, beat_ms * 0.45), ini_c + k * (beat_ms * 0.5), 0.76)
 
-        # Arpegio estéreo
         pasos_arp = 8 if estilo in ("cinematic_imaging", "emotional_imaging") else 16
         paso_ms = compas_ms / pasos_arp
         for s in range(pasos_arp):
@@ -1236,7 +1183,6 @@ def generar_bed_estilo_imaging(estilo: str, modo_clima: str, dur_ms: float) -> n
     musica *= sidechain[:, None]
     pista += _stereo_delay(musica, int(beat_ms * 0.5), int(beat_ms * 0.75), 0.30, 0.24)
 
-    # Batería adaptada al estilo
     kick = _kick_punch(230)
     snare = _snare_pop(185)
     hh_c = _hihat_crisp(55, abierto=False)
@@ -1249,13 +1195,11 @@ def generar_bed_estilo_imaging(estilo: str, modo_clima: str, dur_ms: float) -> n
             _sumar(pista, snare, pos_b, 0.72)
         _sumar(pista, hh_c, pos_b, 0.60)
         if estilo == "urban_imaging" and b % 2 == 1:
-            # Trap hi-hat roll rápido
             for r in range(4):
                 _sumar(pista, hh_c, pos_b + r * (semi_ms * 0.5), 0.50)
         else:
             _sumar(pista, hh_o, pos_b + beat_ms * 0.5, 0.55)
 
-    # Textura climática si llueve o hay tormenta
     if modo_clima in ("lluvia", "tormenta"):
         agua = _filtrar(np.random.uniform(-1, 1, (len(t), 2)), pasa_altos=1100, pasa_bajos=7200)
         oleaje = 0.75 + 0.25 * np.sin(2 * np.pi * 0.3 * t)
@@ -1272,11 +1216,10 @@ def generar_bed_estilo_imaging(estilo: str, modo_clima: str, dur_ms: float) -> n
 
 
 # ---------------------------------------------------------------------------
-# Intros Instrumentales V10 + Nuevas Intros Vocales de 3s, 6s y 10s (V11)
+# Intros Instrumentales V10 + Intros Vocales V12 (3s, 6s y 10s sin voces superpuestas)
 # ---------------------------------------------------------------------------
 
 def sintetizar_intro_instrumental_v10() -> np.ndarray:
-    """Conserva las 6 intros instrumentales de V10 y les suma el Sonic Logo de Nogaradio."""
     estilo = SELECTOR.elegir("intro_inst_v10", [
         "dial_tuning_pips",
         "urbana_wah_groove",
@@ -1344,104 +1287,114 @@ def sintetizar_intro_instrumental_v10() -> np.ndarray:
         _sumar(pista, _sub_drop_cine(1400), 800, 1.0)
         _sumar(pista, _kick_punch(300), 800, 1.0)
 
-    # Sella con la firma sonora reconocible de Nogaradio en ms 820
     _sumar(pista, _sonic_logo_nogaradio(), 820, 0.98)
     return _fade(_reverb_estereo(pista, seg=1.25, mezcla=0.32)[: len(pista)], 15, 350)
 
 
-def generar_intro_vocal_profesional(
+def generar_intro_vocal_profesional_v12(
     client,
     audio_config,
     duracion_seg: int,
     estilo_imaging: str,
+    abre_mujer: bool,
+    activar_eco_intro: bool,
 ) -> np.ndarray:
     """
-    Crea las Intros Vocales Profesionales de 3, 6 o 10 segundos:
-    Alterna voz masculina grave y voz femenina juvenil con frases clave
-    ("La música no se detiene", "Estás conectado", "Esto es Nogaradio"),
-    aplicando Glitch Vocal, Pitch Shift, Reverse Tail, Radio Filter, Echo y Sonic Logo.
+    Intros Vocales Profesionales V12 de 3, 6 y 10 segundos:
+      - NUNCA superpone dos voces diciendo lo mismo.
+      - Usa una sola voz por frase y, cuando corresponde, la MISMA voz repite las últimas
+        2 a 4 palabras con Echo/Delay + Reverb suave + Fade-Out antes de que entre la siguiente parte.
     """
-    dur_ms = float(duracion_seg * 1000)
-    print(f"Generando Intro Vocal Profesional de {duracion_seg}s | Estilo: [{estilo_imaging}]")
-
-    # Base instrumental de imaging + golpes de entrada
-    pista_inst = _rms(generar_bed_estilo_imaging(estilo_imaging, "dia", dur_ms), REFERENCIA_RMS_DB)
-    pista_inst = _fade(pista_inst, 50, 450)
-    _sumar(pista_inst, _whoosh_aerodinamico(550, 280, 5200), 0, 0.85)
-    _sumar(pista_inst, _sub_drop_cine(1100), 420, 0.90)
-    _sumar(pista_inst, _kick_punch(260), 420, 0.95)
-
-    pista_voces = _pista(dur_ms + 400)
+    voz_inicial = "mujer_juvenil" if abre_mujer else "hombre_grave"
+    voz_alterna = "hombre_grave" if abre_mujer else "mujer_juvenil"
 
     if duracion_seg == 3:
-        # ID rápido de 3 segundos: Coro superpuesto Hombre Grave + Mujer Juvenil + Sonic Logo
-        frase_id = SELECTOR.elegir("intro_3s_id", [
-            "Esto es Nogaradio.",
-            "Estás conectado. Nogaradio.",
-            "La música no se detiene. Nogaradio.",
-        ])
-        v_h = sintetizar_voz_perfil(client, frase_id, "hombre_grave", audio_config)
-        v_m = sintetizar_voz_perfil(client, frase_id, "mujer_juvenil", audio_config)
-        coro = crear_voz_doble_coro(v_h, v_m)
-        coro_fx = aplicar_fx_palabra_especifica(coro, "glitch_vocal")
-        _sumar(pista_voces, coro_fx, 380.0, 1.0)
-        _sumar(pista_inst, _sonic_logo_nogaradio(), 1650.0, 0.95)
+        # Intro de ~3s: Una sola voz dice la frase de entrada y repite las últimas palabras con eco + Sonic Logo
+        frase_1 = SELECTOR.elegir("intro_3s_v12", BANCO_FRASES_ENTRADA_IMPACTO)
+        v1_audio, _, desc_1 = sintetizar_frase_con_repeticion_eco(
+            client, frase_1, voz_inicial, audio_config, activar_repeticion_eco=activar_eco_intro
+        )
+        print(f"Intro 3s V12 -> {desc_1}")
+
+        dur_real_ms = max(3200.0, _dur_ms(v1_audio) + 950.0)
+        pista_inst = _fade(_rms(generar_bed_estilo_imaging(estilo_imaging, "dia", dur_real_ms), REFERENCIA_RMS_DB), 40, 400)
+        _sumar(pista_inst, _whoosh_aerodinamico(480, 280, 5000), 0, 0.85)
+        _sumar(pista_inst, _kick_punch(260), 320, 0.95)
+        _sumar(pista_inst, _sonic_logo_nogaradio(), dur_real_ms - 1350.0, 0.92)
+
+        pista_voces = _pista(dur_real_ms)
+        _sumar(pista_voces, v1_audio, 320.0, 1.0)
 
     elif duracion_seg == 6:
-        # Intro de 6 segundos: Alternancia rápida Mujer Juvenil -> Whoosh -> Hombre Grave -> Sonic Logo
-        f1 = SELECTOR.elegir("intro_6s_f1", [
-            "La música no se detiene.",
-            "Estás conectado.",
-            "Subí el volumen.",
-            "Veinticuatro horas en movimiento.",
-        ])
-        f2 = SELECTOR.elegir("intro_6s_f2", [
+        # Intro de ~6s:
+        # 1) Voz 1: "¡Llegó el momento!" -> Voz 1 con eco: "El momento..."
+        # 2) (Cuando termina el eco) Voz 2: "Esto es Nogaradio." -> Sonic Logo
+        f_entrada = SELECTOR.elegir("intro_6s_f1", BANCO_FRASES_ENTRADA_IMPACTO)
+        f_marca = SELECTOR.elegir("intro_6s_f2", [
             "Esto es Nogaradio.",
-            "Escuchás Nogaradio.",
-            "Siempre en tu sintonía, Nogaradio.",
+            "La música no se detiene. Escuchás Nogaradio.",
+            "Estás conectado a Nogaradio.",
         ])
-        v1 = sintetizar_voz_perfil(client, f1, "mujer_juvenil", audio_config)
-        v1_fx = aplicar_fx_palabra_especifica(v1, "radio_filter_band")
+        v1_audio, _, desc_1 = sintetizar_frase_con_repeticion_eco(
+            client, f_entrada, voz_inicial, audio_config, activar_repeticion_eco=True
+        )
+        v2_audio, _, desc_2 = sintetizar_frase_con_repeticion_eco(
+            client, f_marca, voz_alterna, audio_config, activar_repeticion_eco=activar_eco_intro
+        )
+        print(f"Intro 6s V12 -> Parte 1: {desc_1} | Parte 2: {desc_2}")
 
-        v2_h = sintetizar_voz_perfil(client, f2, "hombre_grave", audio_config)
-        v2_m = sintetizar_voz_perfil(client, f2, "mujer_juvenil", audio_config)
-        v2_coro = aplicar_fx_palabra_especifica(crear_voz_doble_coro(v2_h, v2_m), "pitch_shift_armonia")
+        pos_v1 = 350.0
+        pos_v2 = pos_v1 + _dur_ms(v1_audio) + 180.0
+        dur_real_ms = max(6000.0, pos_v2 + _dur_ms(v2_audio) + 850.0)
 
-        _sumar(pista_voces, v1_fx, 450.0, 1.0)
-        pos_v2 = min(2850.0, 450.0 + _dur_ms(v1) + 220.0)
-        _sumar(pista_inst, _laser_drop(320), pos_v2 - 120.0, 0.80)
-        _sumar(pista_voces, v2_coro, pos_v2, 1.0)
-        _sumar(pista_inst, _sonic_logo_nogaradio(), 4400.0, 0.95)
+        pista_inst = _fade(_rms(generar_bed_estilo_imaging(estilo_imaging, "dia", dur_real_ms), REFERENCIA_RMS_DB), 50, 450)
+        _sumar(pista_inst, _whoosh_aerodinamico(500, 280, 5200), 0, 0.85)
+        _sumar(pista_inst, _sub_drop_cine(1000), 350, 0.90)
+        _sumar(pista_inst, _laser_drop(320), pos_v2 - 140.0, 0.80)
+        _sumar(pista_inst, _sonic_logo_nogaradio(), dur_real_ms - 1400.0, 0.95)
+
+        pista_voces = _pista(dur_real_ms)
+        _sumar(pista_voces, v1_audio, pos_v1, 1.0)
+        _sumar(pista_voces, v2_audio, pos_v2, 1.0)
 
     else:
-        # Intro Power de 10 segundos: Montaje a 3 tiempos (Hombre Grave -> Mujer Juvenil -> Coro Doble)
-        f1 = "La música no se detiene."
-        f2 = "Estás conectado."
-        f3 = "Esto es Nogaradio."
+        # Intro de ~10s: Secuencia de 3 intervenciones alternadas (Hombre / Mujer / Hombre) sin pisarse jamás
+        f1 = SELECTOR.elegir("intro_10s_f1", BANCO_FRASES_ENTRADA_IMPACTO)
+        f2 = "La música no se detiene. Estás conectado."
+        f3 = "Esto es Nogaradio, siempre en tu sintonía."
 
-        v1 = aplicar_fx_palabra_especifica(
-            sintetizar_voz_perfil(client, f1, "hombre_grave", audio_config),
-            "reverse_tail_swell"
+        v1_audio, _, desc_1 = sintetizar_frase_con_repeticion_eco(
+            client, f1, voz_inicial, audio_config, activar_repeticion_eco=True
         )
-        v2 = aplicar_fx_palabra_especifica(
-            sintetizar_voz_perfil(client, f2, "mujer_juvenil", audio_config),
-            "glitch_vocal"
+        v2_audio = aplicar_fx_palabra_especifica(
+            sintetizar_voz_perfil(client, f2, voz_alterna, audio_config),
+            "radio_filter_band"
         )
-        v3_h = sintetizar_voz_perfil(client, f3, "hombre_grave", audio_config)
-        v3_m = sintetizar_voz_perfil(client, f3, "mujer_juvenil", audio_config)
-        v3_coro = aplicar_fx_palabra_especifica(crear_voz_doble_coro(v3_h, v3_m), "echo_stereo_delay")
+        v3_audio, _, desc_3 = sintetizar_frase_con_repeticion_eco(
+            client, f3, voz_inicial, audio_config, activar_repeticion_eco=activar_eco_intro
+        )
+        print(f"Intro 10s V12 -> P1: {desc_1} | P3: {desc_3}")
 
-        _sumar(pista_inst, _radio_tuning_dial(600), 0.0, 0.75)
-        _sumar(pista_voces, v1, 650.0, 1.0)
-        _sumar(pista_inst, _whoosh_aerodinamico(420, 400, 4800), 3100.0, 0.85)
-        _sumar(pista_voces, v2, 3400.0, 1.0)
-        _sumar(pista_inst, _sub_drop_cine(1000), 5800.0, 0.95)
-        _sumar(pista_voces, v3_coro, 5950.0, 1.0)
-        _sumar(pista_inst, _sonic_logo_nogaradio(), 8100.0, 0.98)
+        pos_v1 = 450.0
+        pos_v2 = pos_v1 + _dur_ms(v1_audio) + 200.0
+        pos_v3 = pos_v2 + _dur_ms(v2_audio) + 220.0
+        dur_real_ms = max(10000.0, pos_v3 + _dur_ms(v3_audio) + 950.0)
+
+        pista_inst = _fade(_rms(generar_bed_estilo_imaging(estilo_imaging, "dia", dur_real_ms), REFERENCIA_RMS_DB), 50, 500)
+        _sumar(pista_inst, _radio_tuning_dial(550), 0.0, 0.75)
+        _sumar(pista_inst, _sub_drop_cine(1100), 420.0, 0.90)
+        _sumar(pista_inst, _whoosh_aerodinamico(420, 400, 4800), pos_v2 - 180.0, 0.85)
+        _sumar(pista_inst, _sub_drop_cine(1000), pos_v3 - 150.0, 0.95)
+        _sumar(pista_inst, _sonic_logo_nogaradio(), dur_real_ms - 1450.0, 0.98)
+
+        pista_voces = _pista(dur_real_ms)
+        _sumar(pista_voces, v1_audio, pos_v1, 1.0)
+        _sumar(pista_voces, v2_audio, pos_v2, 1.0)
+        _sumar(pista_voces, v3_audio, pos_v3, 1.0)
 
     pista_inst = _ducking_por_voz(pista_inst, pista_voces[: len(pista_inst)], reduccion_db=-4.5)
     mix = pista_inst * _g(-3.5) + pista_voces[: len(pista_inst)]
-    return _fade(_pico(mix, 0.96), 20, 350)
+    return _fade(_pico(mix, 0.96), 20, 300)
 
 
 # ---------------------------------------------------------------------------
@@ -1449,7 +1402,7 @@ def generar_intro_vocal_profesional(
 # ---------------------------------------------------------------------------
 
 def sintetizar_transicion() -> np.ndarray:
-    estilo = SELECTOR.elegir("trans_v11", [
+    estilo = SELECTOR.elegir("trans_v12", [
         "flash_news_radar",
         "double_laser_whip",
         "reverse_suction_drop",
@@ -1517,7 +1470,6 @@ def sintetizar_whip_pase_voces() -> np.ndarray:
 
 
 def sintetizar_cierre() -> np.ndarray:
-    """Cierre con Firma Sonora Nogaradio y caída sedosa."""
     pista = _pista(2900)
     _sumar(pista, _whoosh_aerodinamico(450, 350, 3400), 0, 0.70)
     _sumar(pista, _sub_drop_cine(1600), 360, 0.90)
@@ -1530,7 +1482,7 @@ def sintetizar_cierre() -> np.ndarray:
 
 
 # ---------------------------------------------------------------------------
-# Cortina de Noticias V10/V11
+# Cortina de Noticias
 # ---------------------------------------------------------------------------
 
 def bed_noticias_groove(dur_ms: float) -> np.ndarray:
@@ -1617,13 +1569,13 @@ def cargar_efecto(nombre: str, sintetizador) -> np.ndarray:
     return _pico(x, 0.96)
 
 
-def construir_ambiente_v11(estilo_imaging: str, modo_clima: str, dur_ms: float) -> np.ndarray:
+def construir_ambiente_v12(estilo_imaging: str, modo_clima: str, dur_ms: float) -> np.ndarray:
     n = int(SR * dur_ms / 1000)
     seg = buscar_asset(f"clima/{modo_clima}")
     if seg is not None:
         base = seg_a_array(seg)
     else:
-        print(f"Generando cortina V11 Estilo [{estilo_imaging}] + Clima [{modo_clima}]...")
+        print(f"Generando cortina V12 Estilo [{estilo_imaging}] + Clima [{modo_clima}]...")
         base = generar_bed_estilo_imaging(estilo_imaging, modo_clima, dur_ms)
     x = _rms(_extender(base, n), REFERENCIA_RMS_DB)
     return _fade(x, 250, 450)
@@ -1635,7 +1587,7 @@ def construir_cama_noticias(dur_ms: float) -> np.ndarray:
     if seg is not None:
         base = seg_a_array(seg)
     else:
-        print("Generando cortina V11 Breaking News...")
+        print("Generando cortina V12 Breaking News...")
         base = bed_noticias_groove(dur_ms)
     x = _rms(_extender(base, n), REFERENCIA_RMS_DB)
     return _fade(x, 200, 2600)
@@ -1649,7 +1601,7 @@ def cargar_pista_opcional(base: str) -> np.ndarray | None:
 
 
 # ---------------------------------------------------------------------------
-# Voces Google Cloud TTS con Perfiles V11 (Hombre Grave y Mujer Juvenil)
+# Voces Google Cloud TTS con Perfiles V12
 # ---------------------------------------------------------------------------
 
 def texto_a_ssml(texto: str, rate: str = "1.03", pitch: str = "+0.0st") -> str:
@@ -1660,10 +1612,7 @@ def texto_a_ssml(texto: str, rate: str = "1.03", pitch: str = "+0.0st") -> str:
 
 
 def procesar_voz_seca(x: np.ndarray, perfil: str = "neutro") -> np.ndarray:
-    """
-    Procesamiento 100% SECO (sin eco ni reverb) para que los datos del clima y noticias
-    se entiendan con máxima claridad, ajustando el timbre según sea voz masculina grave o femenina juvenil.
-    """
+    """Procesamiento 100% SECO (sin eco ni reverb) para la voz principal."""
     x = _filtrar(x, pasa_altos=80)
     if perfil == "hombre_grave":
         cuerpo = _filtrar(x, pasa_altos=90, pasa_bajos=220) * 0.30
@@ -1681,13 +1630,6 @@ def procesar_voz_seca(x: np.ndarray, perfil: str = "neutro") -> np.ndarray:
 
 
 def sintetizar_voz_perfil(client, texto: str, perfil: str, audio_config) -> np.ndarray:
-    """
-    Perfiles disponibles:
-      - 'hombre_grave': Voz masculina profunda de Radio Imaging (Neural2-B con pitch grave).
-      - 'mujer_juvenil': Voz femenina juvenil, fresca y brillante (Neural2-A con pitch ágil).
-      - 'hombre_locutor': Voz masculina natural para lectura de noticias/clima.
-      - 'mujer_locutora': Voz femenina natural para lectura de noticias/clima.
-    """
     mapa = {
         "hombre_grave": ("es-US-Neural2-B", "0.99", "-2.2st"),
         "mujer_juvenil": ("es-US-Neural2-A", "1.05", "+1.8st"),
@@ -1703,7 +1645,7 @@ def sintetizar_voz_perfil(client, texto: str, perfil: str, audio_config) -> np.n
 
 
 # ---------------------------------------------------------------------------
-# Construcción de Diálogos Interactivos y 4 Estructuras de Spot V11
+# Construcción de Diálogos Secuenciales y Estructuras de Spot V12
 # ---------------------------------------------------------------------------
 
 def construir_bloque_clima_dialogado(
@@ -1713,8 +1655,8 @@ def construir_bloque_clima_dialogado(
     abre_mujer: bool,
 ) -> np.ndarray:
     """
-    Crea un diálogo dinámico entre Locutor y Locutora donde se complementan y pisan
-    levemente las colas (interrupción natural de radio FM) para dar la hora y el clima.
+    Diálogo secuencial entre Locutor y Locutora para dar la hora y el clima,
+    con turnos limpios sin pisarse.
     """
     ahora = datetime.now(ZONA_HORARIA)
     hora_str = hora_en_espanol(ahora.hour, ahora.minute)
@@ -1728,7 +1670,7 @@ def construir_bloque_clima_dialogado(
     if not data_clima or "current" not in data_clima:
         v1 = sintetizar_voz_perfil(client, f"{saludo}. En Argentina son las {hora_str}.", p1, audio_config)
         v2 = sintetizar_voz_perfil(client, f"Seguimos juntos en Nogaradio. {pase_not}", p2, audio_config)
-        return ensamblar_dialogo_interactivo([(v1, 0.0), (v2, -55.0)])
+        return ensamblar_dialogo_interactivo([(v1, 0.0), (v2, 70.0)])
 
     actual = data_clima["current"]
     temp = round(actual["temperature_2m"])
@@ -1737,17 +1679,15 @@ def construir_bloque_clima_dialogado(
     viento = round(actual["wind_speed_10m"])
     descripcion = CODIGOS_CLIMA.get(actual["weather_code"], "condiciones variables")
 
-    # Voz 1: Saludo, hora y pie del clima -> Voz 2: Interrumpe/responde con los datos exactos -> Voz 1: Pase a noticias
     texto_1 = f"{saludo}. En Argentina son las {hora_str}. {intro_clima}"
-    texto_2 = f"Así es, en {CIUDAD} tenemos {descripcion}, con {temp} grados de temperatura y una sensación térmica de {sensacion}. La humedad es del {humedad} por ciento y vientos de {viento} kilómetros por hora."
+    texto_2 = f"En {CIUDAD} tenemos {descripcion}, con {temp} grados de temperatura y una sensación térmica de {sensacion}. La humedad es del {humedad} por ciento y vientos de {viento} kilómetros por hora."
     texto_3 = pase_not
 
     v1 = sintetizar_voz_perfil(client, texto_1, p1, audio_config)
     v2 = sintetizar_voz_perfil(client, texto_2, p2, audio_config)
     v3 = sintetizar_voz_perfil(client, texto_3, p1, audio_config)
 
-    # Interrupción natural (-65ms en el primer pase y +90ms en el cierre del bloque)
-    return ensamblar_dialogo_interactivo([(v1, 0.0), (v2, -65.0), (v3, 80.0)])
+    return ensamblar_dialogo_interactivo([(v1, 0.0), (v2, 65.0), (v3, 85.0)])
 
 
 def construir_bloque_noticias_dialogado(
@@ -1757,10 +1697,6 @@ def construir_bloque_noticias_dialogado(
     titular_musica: str | None,
     abre_mujer: bool,
 ) -> np.ndarray:
-    """
-    Alterna las voces en las noticias: un locutor presenta y lee Internacionales,
-    y el otro locutor entra dinámicamente con Música.
-    """
     p_mundo = "hombre_locutor" if abre_mujer else "mujer_locutora"
     p_musica = "mujer_juvenil" if abre_mujer else "hombre_locutor"
 
@@ -1801,7 +1737,7 @@ def masterizar(x: np.ndarray) -> np.ndarray:
     return _fade(_pico(x, 0.95), 10, 800)
 
 
-def generar_spot_v11(
+def generar_spot_v12(
     datos_clima: dict | None,
     titular_mundo: str | None,
     titular_musica: str | None,
@@ -1813,8 +1749,8 @@ def generar_spot_v11(
     ahora = datetime.now(ZONA_HORARIA)
     abre_mujer = (ahora.hour % 2 == 0)
 
-    # 1. Selección sin repetición de Estilo de Imaging, Tipo/Duración de Intro y Estructura del Spot
-    estilo_imaging = SELECTOR.elegir("estilo_imaging", ESTILOS_IMAGING_V11)
+    # 1. Selección de Estilo de Imaging, Intro, Estructura y Ubicación del Eco (sin abusar del efecto)
+    estilo_imaging = SELECTOR.elegir("estilo_imaging", ESTILOS_IMAGING_V12)
     modo_intro = SELECTOR.elegir("modo_intro", ["vocal_3s", "vocal_6s", "vocal_10s", "instrumental_v10"])
     estructura = SELECTOR.elegir("estructura_spot", [
         "estructura_1_clasica_duo",
@@ -1822,23 +1758,36 @@ def generar_spot_v11(
         "estructura_3_noticias_primero",
         "estructura_4_show_interactivo",
     ])
-    print(f"Configuración V11 -> Estructura: [{estructura}] | Intro: [{modo_intro}] | Imaging: [{estilo_imaging}]")
+    ubicacion_eco = SELECTOR.elegir("ubicacion_eco_v12", [
+        "inicio_y_final",
+        "solo_final",
+        "solo_inicio",
+        "inicio_y_final",
+    ])
+    eco_en_inicio = ubicacion_eco in ("inicio_y_final", "solo_inicio")
+    eco_en_final = ubicacion_eco in ("inicio_y_final", "solo_final")
 
-    # 2. Generación de la Intro (Vocal de 3s/6s/10s o Instrumental V10 con Tag)
+    print(
+        f"Config V12 -> Estructura: [{estructura}] | Intro: [{modo_intro}] "
+        f"| Imaging: [{estilo_imaging}] | Eco Repeat: [{ubicacion_eco}]"
+    )
+
+    # 2. Generación de la Intro (Vocal de 3s, 6s, 10s o Instrumental V10 + Frase de Entrada con Eco)
     if modo_intro == "vocal_3s":
-        intro = generar_intro_vocal_profesional(client, audio_config, 3, estilo_imaging)
-        usa_tag_extra = False
+        intro = generar_intro_vocal_profesional_v12(client, audio_config, 3, estilo_imaging, abre_mujer, eco_en_inicio)
+        usa_tag_entrada_extra = False
     elif modo_intro == "vocal_6s":
-        intro = generar_intro_vocal_profesional(client, audio_config, 6, estilo_imaging)
-        usa_tag_extra = False
+        intro = generar_intro_vocal_profesional_v12(client, audio_config, 6, estilo_imaging, abre_mujer, eco_en_inicio)
+        usa_tag_entrada_extra = False
     elif modo_intro == "vocal_10s":
-        intro = generar_intro_vocal_profesional(client, audio_config, 10, estilo_imaging)
-        usa_tag_extra = False
+        intro = generar_intro_vocal_profesional_v12(client, audio_config, 10, estilo_imaging, abre_mujer, eco_en_inicio)
+        usa_tag_entrada_extra = False
     else:
         intro = cargar_efecto("intro", sintetizar_intro_instrumental_v10)
-        usa_tag_extra = True
+        usa_tag_entrada_extra = True
 
-    # 3. Generación de los bloques vocales según la estructura sorteada
+    # 3. Generación de los bloques vocales (Siempre una sola voz por frase + su propia repetición con eco)
+    frase_entrada = SELECTOR.elegir("entrada_impacto", BANCO_FRASES_ENTRADA_IMPACTO)
     frase_id = SELECTOR.elegir("id_frase", BANCO_IDENTIFICACION)
     frase_mus = SELECTOR.elegir("mus_frase", BANCO_FRASES_MUSICALES)
     frase_app = SELECTOR.elegir("app_frase", BANCO_PROMOS_APP)
@@ -1847,58 +1796,67 @@ def generar_spot_v11(
     voz_clima_duo = construir_bloque_clima_dialogado(client, audio_config, datos_clima, abre_mujer)
     voz_noticias_duo = construir_bloque_noticias_dialogado(client, audio_config, titular_mundo, titular_musica, abre_mujer)
 
-    # Segmento específico con FX (Frase musical o Promo App con efecto en palabras clave)
-    fx_intermedio = SELECTOR.elegir("fx_palabra_media", ["pitch_shift_armonia", "radio_filter_band", "echo_stereo_delay", "glitch_vocal"])
+    fx_intermedio = SELECTOR.elegir("fx_palabra_media", ["pitch_shift_armonia", "radio_filter_band", "glitch_vocal"])
     voz_mus_fx = aplicar_fx_palabra_especifica(
         sintetizar_voz_perfil(client, frase_mus, "mujer_juvenil" if abre_mujer else "hombre_grave", audio_config),
         fx_intermedio
     )
-    voz_app_fx = aplicar_fx_palabra_especifica(
-        sintetizar_voz_perfil(client, frase_app, "hombre_grave" if abre_mujer else "mujer_juvenil", audio_config),
-        "echo_stereo_delay"
+    voz_app_fx = sintetizar_voz_perfil(client, frase_app, "hombre_locutor" if abre_mujer else "mujer_locutora", audio_config)
+
+    # Remate final con UNA SOLA VOZ (alterna entre Hombre Grave y Mujer Juvenil según la corrida)
+    # y la MISMA voz repite las últimas 2 a 4 palabras después de terminar la frase principal.
+    perfil_remate = SELECTOR.elegir("perfil_remate_v12", ["hombre_grave", "mujer_juvenil"])
+    remate_final_fx, dur_remate_seco_ms, desc_remate = sintetizar_frase_con_repeticion_eco(
+        client, frase_remate, perfil_remate, audio_config, activar_repeticion_eco=eco_en_final
     )
+    print(f"Remate Final V12 -> {desc_remate}")
 
-    # Remate final (alternando entre Coro Doble H+M o Voz solista con los 5 efectos limpios de V10)
-    if random.random() < 0.55:
-        rem_h = sintetizar_voz_perfil(client, frase_remate, "hombre_grave", audio_config)
-        rem_m = sintetizar_voz_perfil(client, frase_remate, "mujer_juvenil", audio_config)
-        remate_base = crear_voz_doble_coro(rem_h, rem_m)
-    else:
-        remate_base = sintetizar_voz_perfil(client, frase_remate, "mujer_juvenil" if not abre_mujer else "hombre_grave", audio_config)
-    remate_final_fx, nombre_fx_fin = procesar_remate_final_fm(remate_base)
-    print(f"FX Remate Final: [{nombre_fx_fin}]")
+    # Si tocó intro instrumental V10, creamos la entrada vocal con repetición de las últimas palabras
+    # (Ejemplo: Hombre: "¡Llegó el momento!" -> Hombre con eco: "El momento..." -> Comienza locución)
+    bloque_apertura_inicial = None
+    if usa_tag_entrada_extra:
+        perfil_apertura = "hombre_grave" if not abre_mujer else "mujer_juvenil"
+        texto_apertura = f"{frase_entrada} {frase_id}" if random.random() < 0.5 else frase_entrada
+        bloque_apertura_inicial, _, desc_ap = sintetizar_frase_con_repeticion_eco(
+            client, texto_apertura, perfil_apertura, audio_config, activar_repeticion_eco=eco_en_inicio
+        )
+        print(f"Apertura Inicial V12 -> {desc_ap}")
 
-    # Armado de los dos grandes bloques del spot según la estructura elegida
+    # Armado de los dos bloques principales del spot según la estructura sorteada
     if estructura == "estructura_1_clasica_duo":
-        # Clima Dúo -> Gran Transición -> Noticias Dúo + Promo App -> Whip -> Remate
-        if usa_tag_extra:
-            tag_arr, _ = procesar_tag_inicio_fm(sintetizar_voz_perfil(client, frase_id, "mujer_juvenil" if abre_mujer else "hombre_grave", audio_config))
-            bloque_1 = ensamblar_dialogo_interactivo([(tag_arr, 0.0), (voz_clima_duo, 120.0)])
+        if bloque_apertura_inicial is not None:
+            bloque_1 = ensamblar_dialogo_interactivo([(bloque_apertura_inicial, 0.0), (voz_clima_duo, 140.0)])
         else:
             bloque_1 = voz_clima_duo
-        bloque_2 = ensamblar_dialogo_interactivo([(voz_noticias_duo, 0.0), (voz_app_fx, 180.0)])
+        bloque_2 = ensamblar_dialogo_interactivo([(voz_noticias_duo, 0.0), (voz_app_fx, 160.0)])
 
     elif estructura == "estructura_2_musical_delante":
-        # Hook Musical con FX + Clima Dúo -> Gran Transición -> Noticias Dúo -> Whip -> Remate
-        bloque_1 = ensamblar_dialogo_interactivo([(voz_mus_fx, 0.0), (voz_clima_duo, 100.0)])
+        if bloque_apertura_inicial is not None:
+            bloque_1 = ensamblar_dialogo_interactivo([(bloque_apertura_inicial, 0.0), (voz_mus_fx, 120.0), (voz_clima_duo, 120.0)])
+        else:
+            bloque_1 = ensamblar_dialogo_interactivo([(voz_mus_fx, 0.0), (voz_clima_duo, 120.0)])
         bloque_2 = voz_noticias_duo
 
     elif estructura == "estructura_3_noticias_primero":
-        # Arranca directo con el Flash de Noticias -> Gran Transición -> Clima Dúo + Promo App -> Whip -> Remate
-        bloque_1 = voz_noticias_duo
+        if bloque_apertura_inicial is not None:
+            bloque_1 = ensamblar_dialogo_interactivo([(bloque_apertura_inicial, 0.0), (voz_noticias_duo, 140.0)])
+        else:
+            bloque_1 = voz_noticias_duo
         bloque_2 = ensamblar_dialogo_interactivo([(voz_clima_duo, 0.0), (voz_app_fx, 150.0)])
 
     else:
-        # Show Interactivo: Clima Dúo -> Gran Transición -> Noticias Dúo -> Hook Musical + App -> Whip -> Remate
-        bloque_1 = voz_clima_duo
-        bloque_2 = ensamblar_dialogo_interactivo([(voz_noticias_duo, 0.0), (voz_mus_fx, 140.0), (voz_app_fx, 100.0)])
+        if bloque_apertura_inicial is not None:
+            bloque_1 = ensamblar_dialogo_interactivo([(bloque_apertura_inicial, 0.0), (voz_clima_duo, 140.0)])
+        else:
+            bloque_1 = voz_clima_duo
+        bloque_2 = ensamblar_dialogo_interactivo([(voz_noticias_duo, 0.0), (voz_mus_fx, 140.0), (voz_app_fx, 120.0)])
 
     trans = cargar_efecto("transicion", sintetizar_transicion)
     whip_duo = sintetizar_whip_pase_voces()
     cierre = cargar_efecto("cierre", sintetizar_cierre)
 
-    # Cálculo de tiempos de ensamblado sin micro-cortes
-    inicio_b1 = _dur_ms(intro) - 750.0 if usa_tag_extra else _dur_ms(intro) - 350.0
+    # Cálculo de tiempos respetando íntegramente las colas de eco de inicio y de cierre
+    inicio_b1 = _dur_ms(intro) - 650.0 if usa_tag_entrada_extra else _dur_ms(intro) - 200.0
     inicio_b1 = max(900.0, inicio_b1)
     fin_b1 = inicio_b1 + _dur_ms(bloque_1)
 
@@ -1906,26 +1864,27 @@ def generar_spot_v11(
     inicio_b2 = inicio_trans + 1450.0
     fin_b2 = inicio_b2 + _dur_ms(bloque_2)
 
-    inicio_whip = fin_b2 - 60.0
-    inicio_remate = fin_b2 + 360.0
-    fin_remate_seco = inicio_remate + _dur_ms(remate_base)
+    inicio_whip = fin_b2 - 40.0
+    inicio_remate = fin_b2 + 380.0
+    fin_remate_seco = inicio_remate + dur_remate_seco_ms
     fin_cola_remate = inicio_remate + _dur_ms(remate_final_fx)
 
-    inicio_cierre = fin_remate_seco + 100.0
+    # El cierre musical entra después de que termina la repetición o acompañando su último rebote sin cortarlo
+    inicio_cierre = fin_cola_remate - 350.0 if eco_en_final else fin_remate_seco + 100.0
     total_ms = max(inicio_cierre + _dur_ms(cierre), fin_cola_remate + 1400.0)
 
     # 1. Bus de Voces
-    bus_voces = _pista(total_ms + 800)
+    bus_voces = _pista(total_ms + 900)
     _sumar(bus_voces, bloque_1, inicio_b1, 1.0)
     _sumar(bus_voces, bloque_2, inicio_b2, 1.0)
     _sumar(bus_voces, remate_final_fx, inicio_remate, 1.0)
 
-    # 2. Bus de Cortinas (Estilo Imaging V11 + Cortina Informativa)
-    ambiente = construir_ambiente_v11(estilo_imaging, ambiente_nombre, (inicio_trans - inicio_b1) + 1200.0)
-    cama_noticias = construir_cama_noticias((total_ms - inicio_trans) + 1500.0)
+    # 2. Bus de Cortinas
+    ambiente = construir_ambiente_v12(estilo_imaging, ambiente_nombre, (inicio_trans - inicio_b1) + 1200.0)
+    cama_noticias = construir_cama_noticias((total_ms - inicio_trans) + 1600.0)
     cama_ext = cargar_pista_opcional("cama")
 
-    bus_cortinas = _pista(total_ms + 800)
+    bus_cortinas = _pista(total_ms + 900)
     dur_tramo_1 = int(SR * (inicio_trans + 150.0 - inicio_b1) / 1000)
     if dur_tramo_1 > 0:
         amb_rec = _fade(ambiente[: min(len(ambiente), dur_tramo_1)], 250, 350)
@@ -1937,16 +1896,16 @@ def generar_spot_v11(
 
     bus_cortinas = _ducking_por_voz(bus_cortinas, bus_voces, reduccion_db=-3.5)
 
-    # Fade-out progresivo lento de 3 segundos al final (salida limpia de V10)
+    # Fade-out progresivo lento de la cortina musical acompañando el eco final
     n_total = int(SR * total_ms / 1000)
-    ini_fade_cama = max(0, int(SR * (fin_remate_seco + 150.0) / 1000))
+    ini_fade_cama = max(0, int(SR * (fin_remate_seco + 100.0) / 1000))
     if n_total > ini_fade_cama:
         curva_cama = np.linspace(1.0, 0.0, n_total - ini_fade_cama) ** 1.5
         bus_cortinas[ini_fade_cama:n_total] *= curva_cama[:, None]
         bus_cortinas[n_total:] = 0.0
 
     # 3. Bus de Sweepers e Intros
-    bus_fx = _pista(total_ms + 800)
+    bus_fx = _pista(total_ms + 900)
     _sumar(bus_fx, intro, 0.0, _g(EFECTOS_DB))
     _sumar(bus_fx, trans, inicio_trans, _g(EFECTOS_DB))
     _sumar(bus_fx, whip_duo, inicio_whip, _g(EFECTOS_DB - 1.0))
@@ -1957,7 +1916,7 @@ def generar_spot_v11(
     SELECTOR.guardar()
 
     array_a_seg(final).export(path_salida, format="mp3", bitrate="192k")
-    print(f"¡Spot V11 Professional Radio Imaging ({len(final) / SR:.1f} s) guardado exitosamente en {path_salida}!")
+    print(f"¡Spot V12 Professional Radio Imaging ({len(final) / SR:.1f} s) guardado exitosamente en {path_salida}!")
 
 
 # ---------------------------------------------------------------------------
@@ -1980,7 +1939,7 @@ def subir_sftp(local_path: str, host: str, port: int, user: str, password: str, 
 
 
 def main():
-    print("=== EJECUTANDO NOGARADIO VERSION V11 PROFESSIONAL RADIO IMAGING ===")
+    print("=== EJECUTANDO NOGARADIO VERSION V12 PROFESSIONAL RADIO IMAGING ===")
     sftp_host = os.environ.get("SFTP_HOST")
     sftp_port = int(os.environ.get("SFTP_PORT", "2022"))
     sftp_user = os.environ.get("SFTP_USER")
@@ -2000,8 +1959,8 @@ def main():
     titular_mundo = obtener_titular_verificado(FEEDS_MUNDO, "mundo", 20)
     titular_musica = obtener_titular_verificado(FEEDS_MUSICA, "musica", 20)
 
-    print("Generando spot con motor V11 Professional Radio Imaging...")
-    generar_spot_v11(datos_clima, titular_mundo, titular_musica, ambiente_nombre, LOCAL_MP3)
+    print("Generando spot con motor V12 Professional Radio Imaging...")
+    generar_spot_v12(datos_clima, titular_mundo, titular_musica, ambiente_nombre, LOCAL_MP3)
 
     print("Subiendo por SFTP...")
     subir_sftp(LOCAL_MP3, sftp_host, sftp_port, sftp_user, sftp_pass, sftp_dir)
