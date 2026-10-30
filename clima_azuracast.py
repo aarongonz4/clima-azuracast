@@ -41,10 +41,6 @@ import requests
 from google.cloud import texttospeech
 from pydub import AudioSegment
 
-# ---------------------------------------------------------------------------
-# Configuración General
-# ---------------------------------------------------------------------------
-
 CIUDAD = "Resistencia"
 LAT = -27.4514
 LON = -58.9867
