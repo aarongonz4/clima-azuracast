@@ -48,7 +48,7 @@ ZONA_HORARIA = ZoneInfo("America/Argentina/Buenos_Aires")
 
 LOCAL_MP3 = "clima.mp3"
 REMOTE_FILENAME = "clima.mp3"
- HISTORIAL_JSON = ".nogaradio_v11_history.json"
+HISTORIAL_JSON = ".nogaradio_v11_history.json"
 
 FEEDS_MUNDO = [
     "https://feeds.bbci.co.uk/mundo/rss.xml",
