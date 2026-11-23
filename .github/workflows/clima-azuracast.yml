@@ -6,7 +6,7 @@ on:
 jobs:
   actualizar-clima:
     runs-on: ubuntu-latest
-    timeout-minutes: 4
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
@@ -28,6 +28,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: "pip"
 
       - name: Instalar ffmpeg (con anti-cuelgues de red)
         run: |
@@ -50,6 +51,7 @@ jobs:
           NOMBRE_EMISORA: ${{ matrix.nombre }}
           VELOCIDAD_VOZ: "+2%"
           SOLO_CLIMA: ${{ matrix.solo_clima }}
+          EDITOR_VOZ_V14: "1"
           SFTP_HOST: ${{ secrets[format('SFTP_HOST_{0}', matrix.id)] || (matrix.id == 'NOGARADIO' && secrets.SFTP_HOST) || '' }}
           SFTP_PORT: ${{ secrets[format('SFTP_PORT_{0}', matrix.id)] || (matrix.id == 'NOGARADIO' && secrets.SFTP_PORT) || '' }}
           SFTP_USER: ${{ secrets[format('SFTP_USER_{0}', matrix.id)] || (matrix.id == 'NOGARADIO' && secrets.SFTP_USER) || '' }}
