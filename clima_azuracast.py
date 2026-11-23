@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Spot automático de clima, noticias e imaging para AzuraCast (Nogaradio)
-VERSION V14 PROFESSIONAL RADIO IMAGING + EDITOR DE VOZ POR PALABRAS.
+VERSION V14.1 PROFESSIONAL RADIO IMAGING + EDITOR DE VOZ POR PALABRAS.
 
 Mejoras de V14 sobre V13:
   1) EDITOR DE VOZ PROFESIONAL (edicion_voz_v14.py):
@@ -586,17 +586,63 @@ def _mapear_metar_a_wmo(wx_string: str, cover: str) -> int:
     return 0
 
 
-def _obtener_metar_resistencia() -> dict | None:
+def _mapear_yr_symbol_a_wmo(symbol: str) -> int:
+    """Convierte symbol_code de api.met.no (yr.no) a código WMO estándar."""
+    s = (symbol or "").lower()
+    if "thunder" in s:
+        return 95
+    if "heavyrain" in s:
+        return 65
+    if "lightrainshowers" in s:
+        return 80
+    if "rainshowers" in s:
+        return 81
+    if "lightrain" in s:
+        return 61
+    if "rain" in s:
+        return 63
+    if "fog" in s:
+        return 45
+    if "cloudy" in s and "partly" not in s:
+        return 3
+    if "partlycloudy" in s:
+        return 2
+    if "fair" in s:
+        return 1
+    return 0
+
+
+def _mapear_wttr_code_a_wmo(wcode: int) -> int:
+    """Convierte código WWO de wttr.in a código WMO estándar."""
+    if wcode in (386, 389, 392, 395, 200):
+        return 95
+    if wcode in (308, 305, 359):
+        return 65
+    if wcode in (299, 302, 356):
+        return 63
+    if wcode in (293, 296, 353, 176):
+        return 61
+    if wcode in (263, 266, 281, 284):
+        return 51
+    if wcode in (143, 248, 260):
+        return 45
+    if wcode in (119, 122):
+        return 3
+    if wcode == 116:
+        return 2
+    return 0
+
+
+def _obtener_metar_resistencia(timeout: int = 6) -> dict | None:
     """
-    Consulta datos reales medidos por la estación meteorológica oficial del
-    Aeropuerto Internacional de Resistencia (SARE) vía AviationWeather (NOAA/ICAO).
+    Fuente 1: Estación meteorológica oficial del Aeropuerto Internacional de Resistencia (SARE).
     """
     url = f"https://aviationweather.gov/api/data/metar?ids={ESTACION_METAR_ICAO}&format=json"
     try:
         resp = requests.get(
             url,
-            headers={"User-Agent": "NogaradioWeatherBot/14.0", "Cache-Control": "no-cache"},
-            timeout=10,
+            headers={"User-Agent": "NogaradioWeatherBot/14.1", "Cache-Control": "no-cache"},
+            timeout=timeout,
         )
         resp.raise_for_status()
         items = resp.json()
@@ -609,7 +655,6 @@ def _obtener_metar_resistencia() -> dict | None:
         if temp is None or dewp is None:
             return None
 
-        # Verificamos que la medición no tenga más de 2.5 horas de antigüedad
         obs_time = metar.get("obsTime")
         if obs_time and (time.time() - float(obs_time)) > 9000:
             return None
@@ -647,8 +692,108 @@ def _obtener_metar_resistencia() -> dict | None:
         return None
 
 
-def _obtener_open_meteo(reintentos: int = 3, espera: int = 3) -> dict | None:
-    """Consulta Open-Meteo con modelo GFS/BestMatch y parámetro anti-caché."""
+def _obtener_met_no_yr(timeout: int = 6) -> dict | None:
+    """
+    Fuente 2 (Respaldo rápido): Instituto Meteorológico de Noruega (yr.no / api.met.no).
+    Muy estable desde runners de GitHub Actions.
+    """
+    url = f"https://api.met.no/weatherapi/locationforecast/2.0/compact?lat={LAT}&lon={LON}"
+    try:
+        resp = requests.get(
+            url,
+            headers={
+                "User-Agent": "NogaradioWeatherBot/14.1 (https://github.com/aarongonz4/clima-azuracast)",
+                "Accept": "application/json",
+            },
+            timeout=timeout,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        ts = data.get("properties", {}).get("timeseries", [])
+        if not ts:
+            return None
+
+        actual_data = ts[0].get("data", {})
+        det = actual_data.get("instant", {}).get("details", {})
+        temp_c = det.get("air_temperature")
+        if temp_c is None:
+            return None
+
+        temp_c = float(temp_c)
+        humedad = float(det.get("relative_humidity", 60.0))
+        viento_ms = float(det.get("wind_speed", 0.0))
+        viento_kmh = round(viento_ms * 3.6, 1)
+        sensacion = round(_calcular_sensacion_termica(temp_c, humedad, viento_kmh), 1)
+
+        symbol = (
+            actual_data.get("next_1_hours", {}).get("summary", {}).get("symbol_code")
+            or actual_data.get("next_6_hours", {}).get("summary", {}).get("symbol_code")
+            or ""
+        )
+        wmo = _mapear_yr_symbol_a_wmo(symbol)
+
+        print(
+            f"Clima YR.no / met.no (Resistencia): {temp_c:.1f}°C | ST {sensacion:.1f}°C | "
+            f"Hum {humedad:.0f}% | Viento {viento_kmh:.0f} km/h | WMO {wmo} ({CODIGOS_CLIMA.get(wmo)})"
+        )
+        return {
+            "source": "MET.NO",
+            "current": {
+                "temperature_2m": temp_c,
+                "apparent_temperature": sensacion,
+                "relative_humidity_2m": humedad,
+                "wind_speed_10m": viento_kmh,
+                "weather_code": wmo,
+            },
+        }
+    except Exception as e:
+        print(f"Aviso: api.met.no no disponible ({e}).", file=sys.stderr)
+        return None
+
+
+def _obtener_wttr_in(timeout: int = 6) -> dict | None:
+    """Fuente 3 (Respaldo rápido): wttr.in en formato JSON."""
+    url = f"https://wttr.in/{LAT},{LON}?format=j1"
+    try:
+        resp = requests.get(
+            url,
+            headers={"User-Agent": "NogaradioWeatherBot/14.1", "Cache-Control": "no-cache"},
+            timeout=timeout,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        cc_list = data.get("current_condition", [])
+        if not cc_list:
+            return None
+
+        cc = cc_list[0]
+        temp_c = float(cc["temp_C"])
+        sensacion = float(cc.get("FeelsLikeC", temp_c))
+        humedad = float(cc.get("humidity", 60.0))
+        viento_kmh = float(cc.get("windspeedKmph", 0.0))
+        wmo = _mapear_wttr_code_a_wmo(int(cc.get("weatherCode", 113)))
+
+        print(
+            f"Clima wttr.in (Resistencia): {temp_c:.1f}°C | ST {sensacion:.1f}°C | "
+            f"Hum {humedad:.0f}% | Viento {viento_kmh:.0f} km/h | WMO {wmo} ({CODIGOS_CLIMA.get(wmo)})"
+        )
+        return {
+            "source": "WTTR.IN",
+            "current": {
+                "temperature_2m": temp_c,
+                "apparent_temperature": sensacion,
+                "relative_humidity_2m": humedad,
+                "wind_speed_10m": viento_kmh,
+                "weather_code": wmo,
+            },
+        }
+    except Exception as e:
+        print(f"Aviso: wttr.in no disponible ({e}).", file=sys.stderr)
+        return None
+
+
+def _obtener_open_meteo(reintentos: int = 2, espera: float = 1.5, timeout: int = 6) -> dict | None:
+    """Fuente 4: Open-Meteo con timeout corto para no trabar GitHub Actions."""
     url = "https://api.open-meteo.com/v1/forecast"
     params = {
         "latitude": LAT,
@@ -663,7 +808,7 @@ def _obtener_open_meteo(reintentos: int = 3, espera: int = 3) -> dict | None:
                 url,
                 params=params,
                 headers={"Cache-Control": "no-cache"},
-                timeout=12,
+                timeout=timeout,
             )
             resp.raise_for_status()
             data = resp.json()
@@ -682,16 +827,19 @@ def _obtener_open_meteo(reintentos: int = 3, espera: int = 3) -> dict | None:
     return None
 
 
-def obtener_clima(reintentos: int = 3, espera: int = 3) -> dict | None:
+def obtener_clima(reintentos: int = 2, espera: float = 1.5) -> dict | None:
     """
-    Obtiene el clima más preciso posible para Resistencia:
-      1) Prioriza la estación meteorológica oficial del Aeropuerto de Resistencia (METAR SARE).
-      2) Si falla o no responde, usa Open-Meteo con reintentos.
+    Obtiene el clima real de Resistencia con cascada rápida (timeout 6s por fuente):
+      1) METAR oficial Aeropuerto de Resistencia (SARE)
+      2) api.met.no (YR.no)
+      3) wttr.in
+      4) Open-Meteo
     """
-    datos_metar = _obtener_metar_resistencia()
-    if datos_metar is not None:
-        return datos_metar
-    return _obtener_open_meteo(reintentos=reintentos, espera=espera)
+    for fn in (_obtener_metar_resistencia, _obtener_met_no_yr, _obtener_wttr_in):
+        datos = fn(timeout=6)
+        if datos is not None:
+            return datos
+    return _obtener_open_meteo(reintentos=reintentos, espera=espera, timeout=6)
 
 
 def elegir_ambiente(data: dict | None, franja: str) -> str:
@@ -1348,9 +1496,9 @@ INTENSIDADES_IMAGING_V13 = [
 
 def seleccionar_intensidad_imaging(franja: str, modo_clima: str) -> str:
     if modo_clima in ("lluvia", "tormenta") or franja in ("atardecer", "noche"):
-        candidatos = ["emotional_imaging", "clean_imaging", "modern_imaging", "fm_classic_imaging"]
+        candidatos = ["emotional_imaging", "modern_imaging", "fm_classic_imaging", "clean_imaging"]
     elif franja in ("manana", "mediodia", "tarde"):
-        candidatos = ["high_energy_imaging", "modern_imaging", "fm_classic_imaging", "clean_imaging"]
+        candidatos = ["high_energy_imaging", "modern_imaging", "fm_classic_imaging"]
     else:
         candidatos = INTENSIDADES_IMAGING_V13
     return SELECTOR.elegir("intensidad_imaging_v13", candidatos)
@@ -1492,7 +1640,7 @@ def producir_momento_marca_nogaradio(
         _sumar(pista_marca, MotorCapasSoundDesign.riser(320.0), 0.0, 0.65)
         _sumar(pista_marca, MotorCapasSoundDesign.bass_drop(850.0), 300.0, 0.78)
         _sumar(pista_marca, voz_v14, 320.0, 1.0)
-        _sumar(pista_marca, fx_v14, 320.0, 0.90)
+        _sumar(pista_marca, fx_v14, 320.0, 1.0)
         _sumar(pista_marca, _sonic_logo_nogaradio(), 320.0 + _dur_ms(voz_v14) - 220.0, 0.72)
         return _fade(_pico(pista_marca, 0.95), 10, 180)
 
@@ -2428,7 +2576,7 @@ def generar_spot_v13(
     eco_en_final = ubicacion_eco in ("inicio_y_final", "solo_final")
 
     print(
-        f"Config V14 -> Hora AR: [{ahora.strftime('%H:%M')} - {franja_horaria.upper()}] "
+        f"Config V14.1 -> Hora AR: [{ahora.strftime('%H:%M')} - {franja_horaria.upper()}] "
         f"| Editor V14: [{'ON' if (EDITOR_VOZ_V14 and editor_v14) else 'OFF (V13)'}] "
         f"| Intensidad: [{intensidad}] | Estilo: [{estilo_imaging} @ {bpm_actual:.0f} BPM] "
         f"| Intro: [{modo_intro}]"
@@ -2603,11 +2751,11 @@ def generar_spot_v13(
     # Bus de Efectos y Capas de Sound Design
     bus_fx = _pista(total_ms + 900)
     _sumar(bus_fx, intro, 0.0, _g(EFECTOS_DB))
-    _sumar(bus_fx, b1_fx, inicio_b1, _g(-2.0))
+    _sumar(bus_fx, b1_fx, inicio_b1, 1.0)
     _sumar(bus_fx, trans, inicio_trans, _g(EFECTOS_DB))
-    _sumar(bus_fx, b2_fx, inicio_b2, _g(-2.0))
+    _sumar(bus_fx, b2_fx, inicio_b2, 1.0)
     _sumar(bus_fx, whip_duo, inicio_whip, _g(EFECTOS_DB - 0.8))
-    _sumar(bus_fx, fx_remate_v14, inicio_remate, _g(-1.5))
+    _sumar(bus_fx, fx_remate_v14, inicio_remate, 1.0)
     _sumar(bus_fx, cierre, inicio_cierre, _g(EFECTOS_DB - 1.2))
 
     # Bus de Cortinas con Automatización de Cortes Rítmicos (incluye palabras clave V14)
@@ -2650,7 +2798,7 @@ def generar_spot_v13(
     array_a_seg(final).export(path_salida, format="mp3", bitrate="192k")
     usadas_tts = editor_v14.obtener_llamadas_tts_usadas() if editor_v14 is not None else 0
     print(
-        f"¡Spot V14 ({len(final) / SR:.1f} s | Llamadas TTS: {usadas_tts}) "
+        f"¡Spot V14.1 ({len(final) / SR:.1f} s | Llamadas TTS: {usadas_tts}) "
         f"guardado exitosamente en {path_salida}!"
     )
 
@@ -2680,7 +2828,7 @@ def main():
     ahora_ar = ahora_argentina()
     franja_horaria = obtener_contexto_horario_argentina(ahora_ar)
     print(
-        f"=== EJECUTANDO NOGARADIO V14 PROFESSIONAL RADIO IMAGING | "
+        f"=== EJECUTANDO NOGARADIO V14.1 PROFESSIONAL RADIO IMAGING | "
         f"Hora AR: {ahora_ar.strftime('%H:%M:%S')} | Franja: {franja_horaria.upper()} "
         f"| Modo Local: {'SI' if modo_local else 'NO'} ==="
     )
@@ -2697,7 +2845,7 @@ def main():
             print(f"Faltan variables: {', '.join(faltantes)} (usá --local para probar sin SFTP)", file=sys.stderr)
             sys.exit(1)
 
-    print("Consultando clima (Estación SARE + respaldo Open-Meteo)...")
+    print("Consultando clima (SARE + YR.no + wttr.in + Open-Meteo)...")
     datos_clima = obtener_clima()
     ambiente_nombre = elegir_ambiente(datos_clima, franja_horaria)
 
